@@ -1,0 +1,28 @@
+# Binaries
+/agents-sync
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of go coverage
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AgentSync state file
+.agentsync-state.json
+
+# Dependencies (vendored)
+vendor/
