@@ -24,7 +24,7 @@ func main() {
 		cli.NewDiffCmd(&configPath),
 		cli.NewPushCmd(&configPath),
 		newValidateCmd(),
-		newInitCmd(),
+		cli.NewInitCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -58,12 +58,3 @@ func newValidateCmd() *cobra.Command {
 	}
 }
 
-func newInitCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "init",
-		Short: "Generate a skeleton agentsync.yaml",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("init: not yet implemented")
-		},
-	}
-}

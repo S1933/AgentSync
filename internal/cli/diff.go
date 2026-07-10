@@ -2,10 +2,8 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/jnuel/agentsync/internal/diff"
 	"github.com/spf13/cobra"
 )
 
@@ -26,41 +24,39 @@ func NewDiffCmd(configPath *string) *cobra.Command {
 }
 
 func runDiff(configPath, target string) error {
-	path, err := pivot.Discover(configPath)
+	_, generated, state, err := prepareSync(configPath, target)
 	if err != nil {
 		return err
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("read pivot file: %w", err)
-	}
-
-	pivotDir := filepath.Dir(path)
-	pf, err := pivot.Parse(data, pivotDir)
-	if err != nil {
-		return err
-	}
-
-	adapters, err := ResolveTargets(target)
-	if err != nil {
-		return err
-	}
-
-	generated, err := Generate(pf, pivotDir, adapters)
-	if err != nil {
-		return err
-	}
-
+	colored := diff.SupportsColor()
 	hasChanges := false
+
 	for name, files := range generated {
-		fmt.Printf("[%s]\n", name)
-		changes, changed := compareFiles(files)
-		printDiffReport(changes, changed)
-		if changed {
-			hasChanges = true
+		results, err := diff.ComputeDiffs(files, state)
+		if err != nil {
+			return err
 		}
-		fmt.Println()
+		results = diff.FilterOrphaned(results)
+
+		if !diff.HasChanges(results) {
+			fmt.Printf("[%s] No changes\n", name)
+			continue
+		}
+
+		hasChanges = true
+		fmt.Printf("[%s]\n", name)
+		fmt.Print(diff.FormatDiff(results, colored))
+	}
+
+	merged := mergeGenerated(generated)
+	allResults, err := diff.ComputeDiffs(merged, state)
+	if err != nil {
+		return err
+	}
+	for _, r := range diff.OrphanedOnly(allResults) {
+		hasChanges = true
+		fmt.Printf("warning: orphaned %s (removed from pivot, still on disk)\n", r.Path)
 	}
 
 	if !hasChanges {

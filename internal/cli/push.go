@@ -1,19 +1,26 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/jnuel/agentsync/internal/diff"
 	"github.com/jnuel/agentsync/internal/fsutil"
 	"github.com/jnuel/agentsync/internal/pivot"
 	"github.com/spf13/cobra"
 )
 
+// ErrManualEdits indicates push was refused due to manual native edits.
+var ErrManualEdits = errors.New("manual edits detected")
+
 // NewPushCmd creates the push subcommand.
 func NewPushCmd(configPath *string) *cobra.Command {
 	var target string
 	var dryRun bool
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "push",
@@ -22,60 +29,140 @@ func NewPushCmd(configPath *string) *cobra.Command {
 			if dryRun {
 				return runDiff(*configPath, target)
 			}
-			return runPush(*configPath, target)
+			return runPush(*configPath, target, force)
 		},
 	}
 
 	cmd.Flags().StringVar(&target, "target", "", "limit to a single CLI target (e.g. opencode)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show changes without writing")
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite manually edited native files")
 	return cmd
 }
 
-func runPush(configPath, target string) error {
-	path, err := pivot.Discover(configPath)
+func runPush(configPath, target string, force bool) error {
+	pivotDir, generated, state, err := prepareSync(configPath, target)
 	if err != nil {
 		return err
+	}
+
+	merged := mergeGenerated(generated)
+	results, err := diff.ComputeDiffs(merged, state)
+	if err != nil {
+		return err
+	}
+
+	if diff.HasManualEdits(results) && !force {
+		paths := diff.ManualEditPaths(results)
+		var b strings.Builder
+		b.WriteString("refusing to push: manually edited files detected:\n")
+		for _, p := range paths {
+			fmt.Fprintf(&b, "  %s\n", p)
+		}
+		b.WriteString("use --force to overwrite")
+		return fmt.Errorf("%w: %s", ErrManualEdits, strings.TrimSpace(b.String()))
+	}
+
+	printOrphanWarnings(diff.OrphanedOnly(results))
+
+	wroteAny := false
+	for name, files := range generated {
+		adapterResults, err := diff.ComputeDiffs(files, state)
+		if err != nil {
+			return err
+		}
+		adapterResults = diff.FilterOrphaned(adapterResults)
+
+		for _, r := range adapterResults {
+			switch r.Status {
+			case diff.StatusCreated, diff.StatusModified, diff.StatusManuallyModified:
+				content := files[r.Path]
+				if err := fsutil.WriteFileAtomic(r.Path, []byte(content), 0o644); err != nil {
+					return fmt.Errorf("write %s: %w", r.Path, err)
+				}
+				state.SetFile(r.Path, []byte(content))
+				fmt.Printf("[%s] wrote %s (%s)\n", name, r.Path, diffStatusName(r.Status))
+				wroteAny = true
+			case diff.StatusUnchanged:
+				state.SetFile(r.Path, []byte(r.NewContent))
+			}
+		}
+	}
+
+	if err := diff.SaveState(pivotDir, state); err != nil {
+		return err
+	}
+
+	if !wroteAny {
+		fmt.Println("No changes")
+	} else {
+		fmt.Printf("state updated: %s\n", filepath.Join(pivotDir, ".agentsync-state.json"))
+	}
+
+	return nil
+}
+
+func diffStatusName(status diff.DiffStatus) string {
+	switch status {
+	case diff.StatusCreated:
+		return "created"
+	case diff.StatusModified:
+		return "modified"
+	case diff.StatusManuallyModified:
+		return "forced"
+	default:
+		return "updated"
+	}
+}
+
+func printOrphanWarnings(results []diff.DiffResult) {
+	for _, r := range results {
+		if r.Status == diff.StatusOrphaned {
+			fmt.Printf("warning: orphaned %s (removed from pivot, still on disk)\n", r.Path)
+		}
+	}
+}
+
+func mergeGenerated(generated map[string]map[string]string) map[string]string {
+	merged := make(map[string]string)
+	for _, files := range generated {
+		for path, content := range files {
+			merged[path] = content
+		}
+	}
+	return merged
+}
+
+func prepareSync(configPath, target string) (pivotDir string, generated map[string]map[string]string, state *diff.StateFile, err error) {
+	path, err := pivot.Discover(configPath)
+	if err != nil {
+		return "", nil, nil, err
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("read pivot file: %w", err)
+		return "", nil, nil, fmt.Errorf("read pivot file: %w", err)
 	}
 
-	pivotDir := filepath.Dir(path)
+	pivotDir = filepath.Dir(path)
 	pf, err := pivot.Parse(data, pivotDir)
 	if err != nil {
-		return err
+		return "", nil, nil, err
 	}
 
 	adapters, err := ResolveTargets(target)
 	if err != nil {
-		return err
+		return "", nil, nil, err
 	}
 
-	generated, err := Generate(pf, pivotDir, adapters)
+	generated, err = Generate(pf, pivotDir, adapters)
 	if err != nil {
-		return err
+		return "", nil, nil, err
 	}
 
-	for name, files := range generated {
-		changes, hasChanges := compareFiles(files)
-		if !hasChanges {
-			fmt.Printf("[%s] No changes\n", name)
-			continue
-		}
-
-		for _, c := range changes {
-			if c.status == "unchanged" {
-				continue
-			}
-			content := files[c.path]
-			if err := fsutil.WriteFileAtomic(c.path, []byte(content), 0o644); err != nil {
-				return fmt.Errorf("write %s: %w", c.path, err)
-			}
-			fmt.Printf("[%s] wrote %s (%s)\n", name, c.path, c.status)
-		}
+	state, err = diff.LoadState(pivotDir)
+	if err != nil {
+		return "", nil, nil, err
 	}
 
-	return nil
+	return pivotDir, generated, state, nil
 }
