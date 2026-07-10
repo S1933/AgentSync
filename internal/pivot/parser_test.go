@@ -202,6 +202,37 @@ commands:
 	}
 }
 
+func TestParseDuplicateAgentIDs(t *testing.T) {
+	yaml := `version: "1"
+agents:
+  - id: build
+    description: "first"
+    mode: primary
+  - id: build
+    description: "second"
+    mode: primary`
+	_, err := Parse([]byte(yaml), testdataDir(t))
+	if err == nil || !strings.Contains(err.Error(), "agents[1].id duplicates agents[0].id") {
+		t.Fatalf("expected duplicate agent id error, got: %v", err)
+	}
+}
+
+func TestParseDuplicateCommandIDs(t *testing.T) {
+	yaml := `version: "1"
+agents: []
+commands:
+  - id: ship
+    description: "first"
+    template: "go"
+  - id: ship
+    description: "second"
+    template: "go"`
+	_, err := Parse([]byte(yaml), testdataDir(t))
+	if err == nil || !strings.Contains(err.Error(), "commands[1].id duplicates commands[0].id") {
+		t.Fatalf("expected duplicate command id error, got: %v", err)
+	}
+}
+
 func TestParsePermissionInvalidEnum(t *testing.T) {
 	yaml := `version: "1"
 agents:

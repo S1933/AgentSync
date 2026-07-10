@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jnuel/agentsync/internal/adapter"
+	"github.com/jnuel/agentsync/internal/adapter/claude"
 	"github.com/jnuel/agentsync/internal/adapter/opencode"
 	"github.com/jnuel/agentsync/internal/cli"
 )
@@ -78,4 +79,67 @@ func copyFile(t *testing.T, src, dst string) {
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestRunPushTargetDoesNotWarnClaudeOrphans(t *testing.T) {
+	tmp := t.TempDir()
+	fixtureDir := filepath.Join("..", "..", "testdata", "integration")
+	pivotPath := filepath.Join(tmp, "agentsync.yaml")
+	copyFile(t, filepath.Join(fixtureDir, "agentsync.yaml"), pivotPath)
+	if err := copyTree(filepath.Join(fixtureDir, "prompts"), filepath.Join(tmp, "prompts")); err != nil {
+		t.Fatal(err)
+	}
+
+	opencodeDir := filepath.Join(tmp, "opencode")
+	claudeDir := filepath.Join(tmp, "claude")
+	for _, dir := range []string{opencodeDir, claudeDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	copyFile(t, filepath.Join(fixtureDir, "existing_opencode.json"), filepath.Join(opencodeDir, "opencode.json"))
+
+	adapters := map[string]adapter.Adapter{
+		"opencode":    opencode.NewAdapterWithBaseDir(opencodeDir, tmp),
+		"claude-code": claude.NewAdapterWithBaseDir(claudeDir, tmp),
+	}
+
+	if err := cli.RunPush(cli.PushOptions{ConfigPath: pivotPath, Adapters: adapters}); err != nil {
+		t.Fatalf("full push: %v", err)
+	}
+
+	out, err := cli.CaptureOutput(func() error {
+		return cli.RunPush(cli.PushOptions{
+			ConfigPath: pivotPath,
+			Target:     "opencode",
+			Adapters:   map[string]adapter.Adapter{"opencode": adapters["opencode"]},
+		})
+	})
+	if err != nil {
+		t.Fatalf("targeted push: %v", err)
+	}
+	if strings.Contains(out, "warning: orphaned") && strings.Contains(out, claudeDir) {
+		t.Fatalf("targeted push should not warn about Claude orphans, got:\n%s", out)
+	}
+}
+
+func copyTree(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/jnuel/agentsync/internal/adapter"
@@ -54,19 +55,21 @@ func NewPushCmd(configPath *string) *cobra.Command {
 }
 
 func runPush(configPath, target string, force bool, adapters map[string]adapter.Adapter) error {
-	pivotDir, generated, state, err := prepareSync(configPath, target, adapters)
+	pivotDir, generated, state, adapters, err := prepareSync(configPath, target, adapters)
 	if err != nil {
 		return err
 	}
 
+	scope := buildOrphanScope(adapters)
 	merged := mergeGenerated(generated)
-	results, err := diff.ComputeDiffs(merged, state)
+	results, err := diff.ComputeDiffs(merged, state, scope)
 	if err != nil {
 		return err
 	}
 
 	if diff.HasManualEdits(results) && !force {
 		paths := diff.ManualEditPaths(results)
+		sort.Strings(paths)
 		var b strings.Builder
 		b.WriteString("refusing to push: manually edited files detected:\n")
 		for _, p := range paths {
@@ -79,8 +82,9 @@ func runPush(configPath, target string, force bool, adapters map[string]adapter.
 	printOrphanWarnings(diff.OrphanedOnly(results))
 
 	wroteAny := false
-	for name, files := range generated {
-		adapterResults, err := diff.ComputeDiffs(files, state)
+	for _, name := range sortedAdapterNames(generated) {
+		files := generated[name]
+		adapterResults, err := diff.ComputeDiffs(files, state, scope)
 		if err != nil {
 			return err
 		}
@@ -93,11 +97,11 @@ func runPush(configPath, target string, force bool, adapters map[string]adapter.
 				if err := fsutil.WriteFileAtomic(r.Path, []byte(content), 0o644); err != nil {
 					return fmt.Errorf("write %s: %w", r.Path, err)
 				}
-				state.SetFile(r.Path, []byte(content))
+				state.SetFile(r.Path, name, []byte(content))
 				fmt.Printf("[%s] wrote %s (%s)\n", name, r.Path, diffStatusName(r.Status))
 				wroteAny = true
 			case diff.StatusUnchanged:
-				state.SetFile(r.Path, []byte(r.NewContent))
+				state.SetFile(r.Path, name, []byte(r.NewContent))
 			}
 		}
 	}
@@ -146,39 +150,64 @@ func mergeGenerated(generated map[string]map[string]string) map[string]string {
 	return merged
 }
 
-func prepareSync(configPath, target string, adapters map[string]adapter.Adapter) (pivotDir string, generated map[string]map[string]string, state *diff.StateFile, err error) {
+func prepareSync(configPath, target string, adapters map[string]adapter.Adapter) (pivotDir string, generated map[string]map[string]string, state *diff.StateFile, resolved map[string]adapter.Adapter, err error) {
 	path, err := pivot.Discover(configPath)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, err
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", nil, nil, fmt.Errorf("read pivot file: %w", err)
+		return "", nil, nil, nil, fmt.Errorf("read pivot file: %w", err)
 	}
 
 	pivotDir = filepath.Dir(path)
 	pf, err := pivot.Parse(data, pivotDir)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, err
 	}
 
 	if adapters == nil {
 		adapters, err = ResolveTargets(target)
 		if err != nil {
-			return "", nil, nil, err
+			return "", nil, nil, nil, err
 		}
 	}
 
 	generated, err = Generate(pf, pivotDir, adapters)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, err
 	}
 
 	state, err = diff.LoadState(pivotDir)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, nil, err
 	}
 
-	return pivotDir, generated, state, nil
+	return pivotDir, generated, state, adapters, nil
+}
+
+func buildOrphanScope(adapters map[string]adapter.Adapter) *diff.OrphanScope {
+	if len(adapters) == 0 {
+		return nil
+	}
+	scope := &diff.OrphanScope{}
+	for name, adpt := range adapters {
+		scope.AdapterNames = append(scope.AdapterNames, name)
+		for _, p := range adpt.TargetPaths() {
+			scope.PathPrefixes = append(scope.PathPrefixes, p)
+		}
+	}
+	sort.Strings(scope.AdapterNames)
+	sort.Strings(scope.PathPrefixes)
+	return scope
+}
+
+func sortedAdapterNames(generated map[string]map[string]string) []string {
+	names := make([]string, 0, len(generated))
+	for name := range generated {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -28,16 +30,31 @@ type DiffResult struct {
 	NewContent string
 }
 
+// OrphanScope limits orphan detection to specific adapters (e.g. when --target is set).
+// Nil scope checks all tracked files. Non-nil scope with AdapterNames set only reports
+// orphans owned by those adapters.
+type OrphanScope struct {
+	AdapterNames []string
+	PathPrefixes []string
+}
+
 // ComputeDiffs compares generated content against disk and the last push state.
-func ComputeDiffs(generated map[string]string, state *StateFile) ([]DiffResult, error) {
+func ComputeDiffs(generated map[string]string, state *StateFile, scope *OrphanScope) ([]DiffResult, error) {
 	if state == nil {
 		state = emptyState()
 	}
 
+	paths := make([]string, 0, len(generated))
+	for path := range generated {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
 	var results []DiffResult
 	seen := make(map[string]struct{}, len(generated))
 
-	for path, newContent := range generated {
+	for _, path := range paths {
+		newContent := generated[path]
 		seen[path] = struct{}{}
 
 		existing, err := os.ReadFile(path)
@@ -80,8 +97,18 @@ func ComputeDiffs(generated map[string]string, state *StateFile) ([]DiffResult, 
 		})
 	}
 
+	statePaths := make([]string, 0, len(state.Files))
 	for path := range state.Files {
+		statePaths = append(statePaths, path)
+	}
+	sort.Strings(statePaths)
+
+	for _, path := range statePaths {
 		if _, ok := seen[path]; !ok {
+			fileState := state.Files[path]
+			if scope != nil && len(scope.AdapterNames) > 0 && !orphanInScope(scope, path, fileState.Adapter) {
+				continue
+			}
 			oldContent, _ := os.ReadFile(path)
 			results = append(results, DiffResult{
 				Path:       path,
@@ -92,6 +119,23 @@ func ComputeDiffs(generated map[string]string, state *StateFile) ([]DiffResult, 
 	}
 
 	return results, nil
+}
+
+func orphanInScope(scope *OrphanScope, path, adapter string) bool {
+	if adapter != "" {
+		for _, name := range scope.AdapterNames {
+			if name == adapter {
+				return true
+			}
+		}
+		return false
+	}
+	for _, prefix := range scope.PathPrefixes {
+		if path == prefix || strings.HasPrefix(path, prefix+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // FormatDiff renders diff results as unified diff output, optionally colorized.

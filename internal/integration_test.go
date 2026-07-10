@@ -184,6 +184,71 @@ func TestEndToEnd_PushClaudeCode(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_TargetedPushNoClaudeOrphans(t *testing.T) {
+	env := newIntegrationEnv(t)
+
+	if err := cli.RunPush(env.pushOpts("")); err != nil {
+		t.Fatalf("full push: %v", err)
+	}
+
+	out, err := cli.CaptureOutput(func() error {
+		return cli.RunPush(env.pushOpts("opencode"))
+	})
+	if err != nil {
+		t.Fatalf("targeted push: %v", err)
+	}
+	if strings.Contains(out, "warning: orphaned") && strings.Contains(out, env.claudeDir) {
+		t.Fatalf("targeted push should not warn about Claude orphans, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_RemoveAgentFromPivot(t *testing.T) {
+	env := newIntegrationEnv(t)
+
+	if err := cli.RunPush(env.pushOpts("opencode")); err != nil {
+		t.Fatalf("initial push: %v", err)
+	}
+
+	data, err := os.ReadFile(env.pivotPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf, err := pivot.Parse(data, env.pivotDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filtered := make([]pivot.AgentDefinition, 0, len(pf.Agents))
+	for _, agent := range pf.Agents {
+		if agent.ID != "scan" {
+			filtered = append(filtered, agent)
+		}
+	}
+	pf.Agents = filtered
+	updated, err := yaml.Marshal(pf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(env.pivotPath, updated, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cli.RunPush(env.pushOpts("opencode")); err != nil {
+		t.Fatalf("push after removing scan agent: %v", err)
+	}
+
+	configData, err := os.ReadFile(filepath.Join(env.opencodeDir, "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := map[string]any{}
+	if err := json.Unmarshal(configData, &root); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := root["agent.scan"]; ok {
+		t.Fatal("agent.scan should be removed from opencode.json after agent deleted from pivot")
+	}
+}
+
 func TestEndToEnd_PushBothTargets(t *testing.T) {
 	env := newIntegrationEnv(t)
 
@@ -438,8 +503,8 @@ func assertOpenCodePush(t *testing.T, env integrationEnv) {
 	if provider["default"] != "anthropic" {
 		t.Errorf("provider.default = %v, want anthropic", provider["default"])
 	}
-	if _, ok := root["agent.legacy-helper"]; !ok {
-		t.Error("expected legacy helper agent preserved during merge")
+	if _, ok := root["agent.legacy-helper"]; ok {
+		t.Error("expected stale agent.legacy-helper removed from opencode.json after push")
 	}
 
 	for _, prompt := range []string{"build.md", "review.md", "scan.md"} {

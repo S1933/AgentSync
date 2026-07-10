@@ -125,6 +125,14 @@ func (a *Adapter) MergeFile(path string, existing []byte, fragments map[string]a
 		}
 	}
 
+	for key := range root {
+		if strings.HasPrefix(key, "agent.") || strings.HasPrefix(key, "command.") {
+			if _, ok := fragments[key]; !ok {
+				delete(root, key)
+			}
+		}
+	}
+
 	for key, fragment := range fragments {
 		root[key] = fragment
 	}

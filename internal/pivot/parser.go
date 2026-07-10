@@ -49,21 +49,41 @@ func validatePivot(pf *PivotFile, pivotDir string) []string {
 		errs = append(errs, "version is required")
 	}
 
-	agentIDs := make(map[string]bool)
+	agentIDs := make(map[string]int)
 	for i, agent := range pf.Agents {
 		prefix := fmt.Sprintf("agents[%d]", i)
 		if agent.ID != "" {
-			agentIDs[agent.ID] = true
+			if first, seen := agentIDs[agent.ID]; seen {
+				errs = append(errs, fmt.Sprintf("%s.id duplicates agents[%d].id (%q)", prefix, first, agent.ID))
+			} else {
+				agentIDs[agent.ID] = i
+			}
 		}
 		errs = append(errs, validateAgent(agent, prefix, pivotDir)...)
 	}
 
+	commandIDs := make(map[string]int)
 	for i, cmd := range pf.Commands {
 		prefix := fmt.Sprintf("commands[%d]", i)
-		errs = append(errs, validateCommand(cmd, prefix, agentIDs)...)
+		if cmd.ID != "" {
+			if first, seen := commandIDs[cmd.ID]; seen {
+				errs = append(errs, fmt.Sprintf("%s.id duplicates commands[%d].id (%q)", prefix, first, cmd.ID))
+			} else {
+				commandIDs[cmd.ID] = i
+			}
+		}
+		errs = append(errs, validateCommand(cmd, prefix, agentIDsToSet(agentIDs))...)
 	}
 
 	return errs
+}
+
+func agentIDsToSet(ids map[string]int) map[string]bool {
+	set := make(map[string]bool, len(ids))
+	for id := range ids {
+		set[id] = true
+	}
+	return set
 }
 
 func validateAgent(agent AgentDefinition, prefix, pivotDir string) []string {

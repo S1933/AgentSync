@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/jnuel/agentsync/internal/adapter"
 	"github.com/jnuel/agentsync/internal/diff"
@@ -61,16 +62,18 @@ func NewDiffCmd(configPath *string) *cobra.Command {
 }
 
 func runDiff(configPath, target string, adapters map[string]adapter.Adapter) error {
-	_, generated, state, err := prepareSync(configPath, target, adapters)
+	_, generated, state, resolved, err := prepareSync(configPath, target, adapters)
 	if err != nil {
 		return err
 	}
 
+	scope := buildOrphanScope(resolved)
 	colored := diff.SupportsColor()
 	hasChanges := false
 
-	for name, files := range generated {
-		results, err := diff.ComputeDiffs(files, state)
+	for _, name := range sortedAdapterNames(generated) {
+		files := generated[name]
+		results, err := diff.ComputeDiffs(files, state, scope)
 		if err != nil {
 			return err
 		}
@@ -87,11 +90,15 @@ func runDiff(configPath, target string, adapters map[string]adapter.Adapter) err
 	}
 
 	merged := mergeGenerated(generated)
-	allResults, err := diff.ComputeDiffs(merged, state)
+	allResults, err := diff.ComputeDiffs(merged, state, scope)
 	if err != nil {
 		return err
 	}
-	for _, r := range diff.OrphanedOnly(allResults) {
+	orphaned := diff.OrphanedOnly(allResults)
+	sort.Slice(orphaned, func(i, j int) bool {
+		return orphaned[i].Path < orphaned[j].Path
+	})
+	for _, r := range orphaned {
 		hasChanges = true
 		fmt.Printf("warning: orphaned %s (removed from pivot, still on disk)\n", r.Path)
 	}

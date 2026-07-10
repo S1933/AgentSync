@@ -156,11 +156,39 @@ func TestMergeFilePreservesOutOfScope(t *testing.T) {
 	if root["theme"] != "dark" {
 		t.Errorf("theme = %v, want dark", root["theme"])
 	}
-	if _, ok := root["agent.old"]; !ok {
-		t.Error("agent.old should be preserved")
+	if _, ok := root["agent.old"]; ok {
+		t.Error("agent.old should be removed when not in pivot fragments")
 	}
 	if _, ok := root["agent.build"]; !ok {
 		t.Error("agent.build should be present")
+	}
+}
+
+func TestMergeFileRemovesStaleAgentKey(t *testing.T) {
+	a := opencode.NewAdapter()
+	existing := []byte(`{
+  "theme": "dark",
+  "agent.build": {"description": "Build"},
+  "agent.removed": {"description": "Removed agent"}
+}`)
+	fragments := map[string]any{
+		"agent.build": map[string]any{"description": "Build and deploy agent"},
+	}
+
+	merged, err := a.MergeFile("opencode.json", existing, fragments)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var root map[string]any
+	if err := json.Unmarshal(merged, &root); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := root["agent.removed"]; ok {
+		t.Error("agent.removed should be removed when agent deleted from pivot")
+	}
+	if _, ok := root["agent.build"]; !ok {
+		t.Error("agent.build should remain")
 	}
 }
 

@@ -16,8 +16,9 @@ const stateVersion = "1"
 
 // FileState records the hash of content written by the last successful push.
 type FileState struct {
-	Hash string `json:"hash"`
-	Path string `json:"path"`
+	Hash    string `json:"hash"`
+	Path    string `json:"path"`
+	Adapter string `json:"adapter,omitempty"`
 }
 
 // StateFile tracks pushed file hashes for manual edit detection.
@@ -82,13 +83,14 @@ func HashContent(data []byte) string {
 }
 
 // SetFile records the hash of content for path in state.
-func (s *StateFile) SetFile(path string, content []byte) {
+func (s *StateFile) SetFile(path, adapter string, content []byte) {
 	if s.Files == nil {
 		s.Files = make(map[string]FileState)
 	}
 	s.Files[path] = FileState{
-		Path: path,
-		Hash: HashContent(content),
+		Path:    path,
+		Hash:    HashContent(content),
+		Adapter: adapter,
 	}
 }
 
