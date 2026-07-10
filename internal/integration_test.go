@@ -12,6 +12,8 @@ import (
 	"github.com/jnuel/agentsync/internal/adapter/claude"
 	"github.com/jnuel/agentsync/internal/adapter/opencode"
 	"github.com/jnuel/agentsync/internal/cli"
+	"github.com/jnuel/agentsync/internal/pivot"
+	"gopkg.in/yaml.v3"
 )
 
 const integrationFixtureDir = "../testdata/integration"
@@ -31,6 +33,54 @@ func TestEndToEnd_PushOpenCode(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("diff: %v", err)
+	}
+	if !strings.Contains(out, "No changes") {
+		t.Fatalf("expected no changes after push, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_PivotEditDiffPush(t *testing.T) {
+	env := newIntegrationEnv(t)
+
+	if err := cli.RunPush(env.pushOpts("opencode")); err != nil {
+		t.Fatalf("initial push: %v", err)
+	}
+
+	const updatedPrompt = "You are an updated build agent for CI/CD tasks.\n"
+	if err := modifyBuildAgent(env.pivotPath, env.pivotDir, updatedPrompt, "Updated build and deploy agent"); err != nil {
+		t.Fatalf("modify pivot: %v", err)
+	}
+
+	out, err := cli.CaptureOutput(func() error {
+		return cli.RunDiff(env.diffOpts("opencode"))
+	})
+	if err != nil {
+		t.Fatalf("diff after pivot edit: %v", err)
+	}
+	for _, want := range []string{"modify", "opencode.json", filepath.Join("prompts", "build.md")} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected diff to show %q, got:\n%s", want, out)
+		}
+	}
+
+	if err := cli.RunPush(env.pushOpts("opencode")); err != nil {
+		t.Fatalf("push after pivot edit: %v", err)
+	}
+
+	promptPath := filepath.Join(env.opencodeDir, "prompts", "build.md")
+	promptData, err := os.ReadFile(promptPath)
+	if err != nil {
+		t.Fatalf("read updated prompt: %v", err)
+	}
+	if string(promptData) != updatedPrompt {
+		t.Fatalf("prompt not updated, got:\n%s", promptData)
+	}
+
+	out, err = cli.CaptureOutput(func() error {
+		return cli.RunDiff(env.diffOpts("opencode"))
+	})
+	if err != nil {
+		t.Fatalf("diff after push: %v", err)
 	}
 	if !strings.Contains(out, "No changes") {
 		t.Fatalf("expected no changes after push, got:\n%s", out)
@@ -259,11 +309,33 @@ func TestEndToEnd_Init(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := string(data)
-	for _, want := range []string{"version:", "agents:", "id: legacy-helper", "commands:"} {
-		if !strings.Contains(content, want) {
-			t.Errorf("init output missing %q:\n%s", want, content)
-		}
+
+	pf, err := pivot.Parse(data, tmp)
+	if err != nil {
+		t.Fatalf("parse init output: %v", err)
+	}
+	if pf.Version != "1" {
+		t.Errorf("version = %q, want 1", pf.Version)
+	}
+	if len(pf.Commands) != 0 {
+		t.Errorf("commands = %d, want 0", len(pf.Commands))
+	}
+	if len(pf.Agents) != 1 {
+		t.Fatalf("agents = %d, want 1", len(pf.Agents))
+	}
+
+	agent := pf.Agents[0]
+	if agent.ID != "legacy-helper" {
+		t.Errorf("agent id = %q, want legacy-helper", agent.ID)
+	}
+	if agent.Description != "Legacy helper agent preserved during merge" {
+		t.Errorf("description = %q, want legacy helper description", agent.Description)
+	}
+	if agent.Mode != "primary" {
+		t.Errorf("mode = %q, want primary", agent.Mode)
+	}
+	if strings.TrimSpace(agent.SystemPrompt) != "You are a legacy helper." {
+		t.Errorf("systemPrompt = %q, want legacy helper prompt", agent.SystemPrompt)
 	}
 }
 
@@ -359,6 +431,13 @@ func assertOpenCodePush(t *testing.T, env integrationEnv) {
 	if root["theme"] != "dark" {
 		t.Errorf("theme = %v, want dark (preserved from existing config)", root["theme"])
 	}
+	provider, ok := root["provider"].(map[string]any)
+	if !ok {
+		t.Fatalf("provider = %#v, want map preserved from existing config", root["provider"])
+	}
+	if provider["default"] != "anthropic" {
+		t.Errorf("provider.default = %v, want anthropic", provider["default"])
+	}
 	if _, ok := root["agent.legacy-helper"]; !ok {
 		t.Error("expected legacy helper agent preserved during merge")
 	}
@@ -377,6 +456,34 @@ func assertStateFile(t *testing.T, pivotDir string) {
 	if _, err := os.Stat(statePath); err != nil {
 		t.Fatalf("state file missing: %v", err)
 	}
+}
+
+func modifyBuildAgent(pivotPath, pivotDir, newPrompt, newDescription string) error {
+	data, err := os.ReadFile(pivotPath)
+	if err != nil {
+		return err
+	}
+	pf, err := pivot.Parse(data, pivotDir)
+	if err != nil {
+		return err
+	}
+	found := false
+	for i, agent := range pf.Agents {
+		if agent.ID == "build" {
+			pf.Agents[i].SystemPrompt = newPrompt
+			pf.Agents[i].Description = newDescription
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errors.New("agent not found: build")
+	}
+	updated, err := yaml.Marshal(pf)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(pivotPath, updated, 0o644)
 }
 
 func copyFile(src, dst string) error {
