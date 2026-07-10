@@ -74,6 +74,37 @@ func TestInitFromClaudeCode(t *testing.T) {
 	}
 }
 
+func TestInitFallsBackToClaudeOnBrokenOpenCode(t *testing.T) {
+	dir := t.TempDir()
+	claudeFixture := filepath.Join("testdata", "init", "claude")
+	claudeDir := filepath.Join(dir, "claude")
+	if err := copyDir(claudeFixture, claudeDir); err != nil {
+		t.Fatal(err)
+	}
+
+	opencodeDir := filepath.Join(dir, "opencode")
+	if err := os.MkdirAll(opencodeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(opencodeDir, "opencode.json"), []byte("{not valid json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cli.RunInit(cli.InitOptions{WorkDir: dir, OpenCodeDir: opencodeDir, ClaudeDir: claudeDir}); err != nil {
+		t.Fatal(err)
+	}
+
+	outPath := filepath.Join(dir, "agentsync.yaml")
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "id: build") {
+		t.Errorf("expected Claude bootstrap output, got:\n%s", content)
+	}
+}
+
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {

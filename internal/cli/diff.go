@@ -24,7 +24,7 @@ func NewDiffCmd(configPath *string) *cobra.Command {
 }
 
 func runDiff(configPath, target string) error {
-	_, generated, state, err := prepareSync(configPath, target)
+	_, generated, state, err := prepareSync(configPath, target, nil)
 	if err != nil {
 		return err
 	}

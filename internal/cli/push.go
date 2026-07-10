@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jnuel/agentsync/internal/adapter"
 	"github.com/jnuel/agentsync/internal/diff"
 	"github.com/jnuel/agentsync/internal/fsutil"
 	"github.com/jnuel/agentsync/internal/pivot"
@@ -15,6 +16,19 @@ import (
 
 // ErrManualEdits indicates push was refused due to manual native edits.
 var ErrManualEdits = errors.New("manual edits detected")
+
+// PushOptions configures push for testing and programmatic use.
+type PushOptions struct {
+	ConfigPath string
+	Target     string
+	Force      bool
+	Adapters   map[string]adapter.Adapter
+}
+
+// RunPush pushes pivot config to native CLI configs.
+func RunPush(opts PushOptions) error {
+	return runPush(opts.ConfigPath, opts.Target, opts.Force, opts.Adapters)
+}
 
 // NewPushCmd creates the push subcommand.
 func NewPushCmd(configPath *string) *cobra.Command {
@@ -29,7 +43,7 @@ func NewPushCmd(configPath *string) *cobra.Command {
 			if dryRun {
 				return runDiff(*configPath, target)
 			}
-			return runPush(*configPath, target, force)
+			return runPush(*configPath, target, force, nil)
 		},
 	}
 
@@ -39,8 +53,8 @@ func NewPushCmd(configPath *string) *cobra.Command {
 	return cmd
 }
 
-func runPush(configPath, target string, force bool) error {
-	pivotDir, generated, state, err := prepareSync(configPath, target)
+func runPush(configPath, target string, force bool, adapters map[string]adapter.Adapter) error {
+	pivotDir, generated, state, err := prepareSync(configPath, target, adapters)
 	if err != nil {
 		return err
 	}
@@ -132,7 +146,7 @@ func mergeGenerated(generated map[string]map[string]string) map[string]string {
 	return merged
 }
 
-func prepareSync(configPath, target string) (pivotDir string, generated map[string]map[string]string, state *diff.StateFile, err error) {
+func prepareSync(configPath, target string, adapters map[string]adapter.Adapter) (pivotDir string, generated map[string]map[string]string, state *diff.StateFile, err error) {
 	path, err := pivot.Discover(configPath)
 	if err != nil {
 		return "", nil, nil, err
@@ -149,9 +163,11 @@ func prepareSync(configPath, target string) (pivotDir string, generated map[stri
 		return "", nil, nil, err
 	}
 
-	adapters, err := ResolveTargets(target)
-	if err != nil {
-		return "", nil, nil, err
+	if adapters == nil {
+		adapters, err = ResolveTargets(target)
+		if err != nil {
+			return "", nil, nil, err
+		}
 	}
 
 	generated, err = Generate(pf, pivotDir, adapters)

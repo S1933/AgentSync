@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,91 +10,62 @@ import (
 	"github.com/jnuel/agentsync/internal/adapter"
 	"github.com/jnuel/agentsync/internal/adapter/opencode"
 	"github.com/jnuel/agentsync/internal/cli"
-	"github.com/jnuel/agentsync/internal/diff"
-	"github.com/jnuel/agentsync/internal/pivot"
 )
 
-func TestPushStateAndManualEditDetection(t *testing.T) {
+func TestRunPushManualEditDetection(t *testing.T) {
 	tmp := t.TempDir()
-	pivotDir := filepath.Join("..", "adapter", "opencode", "testdata")
+	fixtureDir := filepath.Join("..", "adapter", "opencode", "testdata")
 	pivotPath := filepath.Join(tmp, "agentsync.yaml")
-	copyFile(t, filepath.Join(pivotDir, "agentsync.yaml"), pivotPath)
+	copyFile(t, filepath.Join(fixtureDir, "agentsync.yaml"), pivotPath)
 
 	opencodeDir := filepath.Join(tmp, "opencode")
 	adapters := map[string]adapter.Adapter{
-		"opencode": opencode.NewAdapterWithBaseDir(opencodeDir, pivotDir),
+		"opencode": opencode.NewAdapterWithBaseDir(opencodeDir, tmp),
+	}
+	opts := cli.PushOptions{
+		ConfigPath: pivotPath,
+		Target:     "opencode",
+		Adapters:   adapters,
 	}
 
-	data, err := os.ReadFile(pivotPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pf, err := pivot.Parse(data, tmp)
-	if err != nil {
-		t.Fatal(err)
+	if err := cli.RunPush(opts); err != nil {
+		t.Fatalf("first push: %v", err)
 	}
 
-	generated, err := cli.Generate(pf, tmp, adapters)
-	if err != nil {
-		t.Fatal(err)
+	targetPath := filepath.Join(opencodeDir, "prompts", "build.md")
+	if _, err := os.Stat(targetPath); err != nil {
+		t.Fatalf("expected generated build prompt at %s: %v", targetPath, err)
 	}
 
-	state := &diff.StateFile{Version: "1", Files: map[string]diff.FileState{}}
-	files := generated["opencode"]
-
-	writeGenerated(t, files)
-	for path, content := range files {
-		state.SetFile(path, []byte(content))
-	}
-	if err := diff.SaveState(tmp, state); err != nil {
-		t.Fatal(err)
-	}
-
-	results, err := diff.ComputeDiffs(files, state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if diff.HasChanges(diff.FilterOrphaned(results)) {
-		t.Fatalf("expected no changes after push, got %+v", results)
-	}
-
-	var targetPath string
-	for path := range files {
-		if strings.HasSuffix(path, "build.md") {
-			targetPath = path
-			break
-		}
-	}
-	if targetPath == "" {
-		t.Fatal("missing build prompt path")
-	}
 	if err := os.WriteFile(targetPath, []byte("manual edit"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	results, err = diff.ComputeDiffs(files, state)
+	err := cli.RunPush(opts)
+	if err == nil {
+		t.Fatal("expected error when pushing with manual edits and no --force")
+	}
+	if !errors.Is(err, cli.ErrManualEdits) {
+		t.Fatalf("expected ErrManualEdits, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), targetPath) {
+		t.Fatalf("error should list edited path %q: %v", targetPath, err)
+	}
+
+	opts.Force = true
+	if err := cli.RunPush(opts); err != nil {
+		t.Fatalf("force push: %v", err)
+	}
+
+	data, err := os.ReadFile(targetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !diff.HasManualEdits(results) {
-		t.Fatal("expected manual edit detection")
+	if string(data) == "manual edit" {
+		t.Fatal("force push did not overwrite manual edit")
 	}
-
-	out := diff.FormatDiff(diff.FilterOrphaned(results), false)
-	if !strings.Contains(out, "warning: manually modified") {
-		t.Fatalf("diff output missing manual warning:\n%s", out)
-	}
-}
-
-func writeGenerated(t *testing.T, files map[string]string) {
-	t.Helper()
-	for path, content := range files {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	if !strings.Contains(string(data), "build agent") {
+		t.Fatalf("expected restored pivot content, got: %q", string(data))
 	}
 }
 

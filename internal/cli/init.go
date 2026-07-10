@@ -80,7 +80,7 @@ func bootstrapPivot(opts InitOptions) (*pivot.PivotFile, string, error) {
 		opencodeDir = fsutil.OpenCodePath()
 	}
 	if pf, err := bootstrapFromOpenCode(opencodeDir); err != nil {
-		return nil, "", err
+		fmt.Fprintf(os.Stderr, "warning: skipping OpenCode bootstrap: %v\n", err)
 	} else if pf != nil {
 		return pf, "opencode", nil
 	}
