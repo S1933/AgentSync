@@ -1,0 +1,13 @@
+{
+  "theme": "dark",
+  "provider": {
+    "default": "anthropic"
+  },
+  "agent": {
+    "legacy-helper": {
+      "description": "Legacy helper agent preserved during merge",
+      "mode": "primary",
+      "prompt": "You are a legacy helper."
+    }
+  }
+}

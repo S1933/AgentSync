@@ -1,5 +1,6 @@
 # Binaries
 /agents-sync
+/bin/
 *.exe
 *.dll
 *.so
@@ -24,5 +25,12 @@ Thumbs.db
 # AgentSync state file
 .agentsync-state.json
 
+# Local personal pivot (per-user config, not tracked)
+/agentsync.yaml
+
+# Claude Code local settings
+.claude/
+
 # Dependencies (vendored)
 vendor/
+.superpowers/
