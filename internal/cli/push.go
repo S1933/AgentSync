@@ -41,7 +41,7 @@ func NewPushCmd(configPath *string) *cobra.Command {
 		Short: "Push pivot config to native CLI configs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRun {
-				return runDiff(*configPath, target)
+				return runDiff(*configPath, target, nil)
 			}
 			return runPush(*configPath, target, force, nil)
 		},

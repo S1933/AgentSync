@@ -22,10 +22,10 @@ type agentFrontmatter struct {
 
 // GenerateAgent produces a Claude Code agent Markdown file with YAML frontmatter.
 func GenerateAgent(agent pivot.AgentDefinition, pivotDir string) (map[string]string, error) {
-	return generateAgentFile(agent, pivotDir)
+	return generateAgentFile(agent, pivotDir, fsutil.ClaudePath())
 }
 
-func generateAgentFile(agent pivot.AgentDefinition, pivotDir string) (map[string]string, error) {
+func generateAgentFile(agent pivot.AgentDefinition, pivotDir, baseDir string) (map[string]string, error) {
 	body, err := resolvePromptContent(agent, pivotDir)
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func generateAgentFile(agent pivot.AgentDefinition, pivotDir string) (map[string
 	buf.WriteString("---\n\n")
 	buf.WriteString(body)
 
-	agentPath := filepath.Join(fsutil.ClaudePath(), "agents", agent.ID+".md")
+	agentPath := filepath.Join(baseDir, "agents", agent.ID+".md")
 	return map[string]string{agentPath: buf.String()}, nil
 }
 

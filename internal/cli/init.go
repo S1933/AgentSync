@@ -215,10 +215,7 @@ func readOpenCodeFileRef(ref, baseDir string) (string, error) {
 	if m == nil {
 		return ref, nil
 	}
-	path := m[1]
-	if strings.HasPrefix(path, "./") {
-		path = path[2:]
-	}
+	path := strings.TrimPrefix(m[1], "./")
 	data, err := os.ReadFile(filepath.Join(baseDir, path))
 	if os.IsNotExist(err) {
 		return "", nil

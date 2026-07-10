@@ -119,7 +119,7 @@ func buildPermissionBlock(agent pivot.AgentDefinition) map[string]any {
 
 	readSubs := []string{"glob", "grep", "list", "lsp"}
 	override := extractOpenCodePermissionOverride(agent.Extensions)
-	if override != nil && len(override) > 0 {
+	if len(override) > 0 {
 		for _, key := range readSubs {
 			if val, ok := override[key]; ok {
 				result[key] = val

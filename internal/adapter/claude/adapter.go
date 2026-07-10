@@ -10,12 +10,18 @@ import (
 
 // Adapter implements the Claude Code target adapter.
 type Adapter struct {
+	baseDir  string
 	pivotDir string
 }
 
 // NewAdapter creates a Claude Code adapter.
 func NewAdapter() *Adapter {
-	return &Adapter{}
+	return &Adapter{baseDir: fsutil.ClaudePath()}
+}
+
+// NewAdapterWithBaseDir creates an adapter with a custom base directory (for tests).
+func NewAdapterWithBaseDir(baseDir, pivotDir string) *Adapter {
+	return &Adapter{baseDir: baseDir, pivotDir: pivotDir}
 }
 
 // SetPivotDir sets the pivot directory for promptFile resolution.
@@ -41,20 +47,19 @@ func (a *Adapter) GenerateAgent(agent pivot.AgentDefinition) (map[string]string,
 	if err := a.ValidateAgent(agent); err != nil {
 		return nil, err
 	}
-	return generateAgentFile(agent, a.pivotDir)
+	return generateAgentFile(agent, a.pivotDir, a.baseDir)
 }
 
 // GenerateCommand produces a Claude Code command Markdown file.
 func (a *Adapter) GenerateCommand(cmd pivot.CommandDefinition) (map[string]string, error) {
-	return generateCommandFile(cmd)
+	return generateCommandFile(cmd, a.baseDir)
 }
 
 // TargetPaths returns paths this adapter writes to.
 func (a *Adapter) TargetPaths() []string {
-	base := fsutil.ClaudePath()
 	return []string{
-		filepath.Join(base, "agents"),
-		filepath.Join(base, "commands"),
+		filepath.Join(a.baseDir, "agents"),
+		filepath.Join(a.baseDir, "commands"),
 	}
 }
 

@@ -10,10 +10,10 @@ import (
 
 // GenerateCommand produces a Claude Code command Markdown file.
 func GenerateCommand(cmd pivot.CommandDefinition) (map[string]string, error) {
-	return generateCommandFile(cmd)
+	return generateCommandFile(cmd, fsutil.ClaudePath())
 }
 
-func generateCommandFile(cmd pivot.CommandDefinition) (map[string]string, error) {
+func generateCommandFile(cmd pivot.CommandDefinition, baseDir string) (map[string]string, error) {
 	var buf strings.Builder
 	if cmd.Agent != "" {
 		buf.WriteString("<!-- agent: ")
@@ -22,6 +22,6 @@ func generateCommandFile(cmd pivot.CommandDefinition) (map[string]string, error)
 	}
 	buf.WriteString(cmd.Template)
 
-	cmdPath := filepath.Join(fsutil.ClaudePath(), "commands", cmd.ID+".md")
+	cmdPath := filepath.Join(baseDir, "commands", cmd.ID+".md")
 	return map[string]string{cmdPath: buf.String()}, nil
 }
