@@ -114,23 +114,28 @@ func bootstrapFromOpenCode(baseDir string) (*pivot.PivotFile, error) {
 	}
 
 	pf := &pivot.PivotFile{Version: "1"}
-	keys := sortedKeys(root)
 
-	for _, key := range keys {
-		fragment, ok := root[key].(map[string]any)
-		if !ok {
-			continue
-		}
-
-		switch {
-		case strings.HasPrefix(key, "agent."):
-			agent, err := openCodeAgentToPivot(strings.TrimPrefix(key, "agent."), fragment, baseDir)
+	if agents, ok := root["agent"].(map[string]any); ok {
+		for _, id := range sortedKeys(agents) {
+			fragment, ok := agents[id].(map[string]any)
+			if !ok {
+				continue
+			}
+			agent, err := openCodeAgentToPivot(id, fragment, baseDir)
 			if err != nil {
 				return nil, err
 			}
 			pf.Agents = append(pf.Agents, agent)
-		case strings.HasPrefix(key, "command."):
-			cmd, err := openCodeCommandToPivot(strings.TrimPrefix(key, "command."), fragment, baseDir)
+		}
+	}
+
+	if commands, ok := root["command"].(map[string]any); ok {
+		for _, id := range sortedKeys(commands) {
+			fragment, ok := commands[id].(map[string]any)
+			if !ok {
+				continue
+			}
+			cmd, err := openCodeCommandToPivot(id, fragment, baseDir)
 			if err != nil {
 				return nil, err
 			}

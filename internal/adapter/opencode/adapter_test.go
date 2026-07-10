@@ -133,11 +133,14 @@ func TestGenerateCommand(t *testing.T) {
 	}
 }
 
-func TestMergeFilePreservesOutOfScope(t *testing.T) {
+func TestMergeFileUpsertsNestedAndPreserves(t *testing.T) {
 	a := opencode.NewAdapter()
 	existing := []byte(`{
   "theme": "dark",
-  "agent.old": {"description": "legacy"}
+  "agent": {
+    "orchestrator": {"description": "native only"},
+    "build": {"description": "old build"}
+  }
 }`)
 	fragments := map[string]any{
 		"agent.build": map[string]any{"description": "Build and deploy agent"},
@@ -154,22 +157,35 @@ func TestMergeFilePreservesOutOfScope(t *testing.T) {
 	}
 
 	if root["theme"] != "dark" {
-		t.Errorf("theme = %v, want dark", root["theme"])
+		t.Errorf("theme = %v, want dark (unrelated keys preserved)", root["theme"])
 	}
-	if _, ok := root["agent.old"]; ok {
-		t.Error("agent.old should be removed when not in pivot fragments")
+	if _, ok := root["agent.build"]; ok {
+		t.Error("must not write a flat dotted agent.build key")
 	}
-	if _, ok := root["agent.build"]; !ok {
-		t.Error("agent.build should be present")
+
+	agents, ok := root["agent"].(map[string]any)
+	if !ok {
+		t.Fatalf("agent = %T, want nested object", root["agent"])
+	}
+	if _, ok := agents["orchestrator"]; !ok {
+		t.Error("native-only agent orchestrator should be preserved (upsert-only)")
+	}
+	build, ok := agents["build"].(map[string]any)
+	if !ok {
+		t.Fatalf("agent.build = %T, want object", agents["build"])
+	}
+	if build["description"] != "Build and deploy agent" {
+		t.Errorf("build.description = %v, want updated value from pivot", build["description"])
 	}
 }
 
-func TestMergeFileRemovesStaleAgentKey(t *testing.T) {
+func TestMergeFilePreservesNativeAgentsNotInPivot(t *testing.T) {
 	a := opencode.NewAdapter()
 	existing := []byte(`{
-  "theme": "dark",
-  "agent.build": {"description": "Build"},
-  "agent.removed": {"description": "Removed agent"}
+  "agent": {
+    "build": {"description": "Build"},
+    "legacy": {"description": "not in pivot"}
+  }
 }`)
 	fragments := map[string]any{
 		"agent.build": map[string]any{"description": "Build and deploy agent"},
@@ -184,12 +200,83 @@ func TestMergeFileRemovesStaleAgentKey(t *testing.T) {
 	if err := json.Unmarshal(merged, &root); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := root["agent.removed"]; ok {
-		t.Error("agent.removed should be removed when agent deleted from pivot")
+	agents := root["agent"].(map[string]any)
+	if _, ok := agents["legacy"]; !ok {
+		t.Error("agent.legacy should be preserved under upsert-only policy")
 	}
-	if _, ok := root["agent.build"]; !ok {
+	if _, ok := agents["build"]; !ok {
 		t.Error("agent.build should remain")
 	}
+}
+
+func TestMergeFilePreservesKeyOrder(t *testing.T) {
+	a := opencode.NewAdapter()
+	existing := []byte(`{
+  "model": "glm",
+  "small_model": "flash",
+  "agent": {
+    "orchestrator": {"description": "native"}
+  },
+  "permission": {"edit": "ask"}
+}`)
+	fragments := map[string]any{
+		"agent.build": map[string]any{"description": "Build"},
+	}
+
+	merged, err := a.MergeFile("opencode.json", existing, fragments)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	topOrder := topLevelKeyOrder(t, merged)
+	want := []string{"model", "small_model", "agent", "permission"}
+	if !reflect.DeepEqual(topOrder, want) {
+		t.Errorf("top-level key order = %v, want %v", topOrder, want)
+	}
+
+	agentOrder := nestedKeyOrder(t, merged, "agent")
+	if !reflect.DeepEqual(agentOrder, []string{"orchestrator", "build"}) {
+		t.Errorf("agent key order = %v, want [orchestrator build]", agentOrder)
+	}
+}
+
+// topLevelKeyOrder returns root object keys in document order.
+func topLevelKeyOrder(t *testing.T, data []byte) []string {
+	t.Helper()
+	return decodeKeyOrder(t, data)
+}
+
+func nestedKeyOrder(t *testing.T, data []byte, key string) []string {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(string(data)))
+	// walk to the nested object
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		t.Fatal(err)
+	}
+	_ = dec
+	return decodeKeyOrder(t, root[key])
+}
+
+func decodeKeyOrder(t *testing.T, data []byte) []string {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(string(data)))
+	if _, err := dec.Token(); err != nil { // opening '{'
+		t.Fatal(err)
+	}
+	var keys []string
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, tok.(string))
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return keys
 }
 
 func TestMergeFileEmpty(t *testing.T) {

@@ -1,9 +1,11 @@
 package opencode
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/jnuel/agentsync/internal/fsutil"
@@ -112,34 +114,94 @@ func (a *Adapter) ConfigPath() string {
 	return filepath.Join(a.baseDir, configFileName)
 }
 
-// MergeFile merges fragments into an existing opencode.json, preserving unrelated keys.
+// fragmentGroups are the nested containers agentsync-managed fragments live under.
+var fragmentGroups = []string{"agent", "command"}
+
+// MergeFile upserts fragments into the nested agent/command objects of an existing
+// opencode.json. Managed entries are created or updated in place; every other key —
+// including native-only agents/commands and unrelated top-level config — is preserved
+// verbatim, and the original key ordering is kept so pushes produce minimal diffs.
 func (a *Adapter) MergeFile(path string, existing []byte, fragments map[string]any) ([]byte, error) {
 	if !strings.HasSuffix(filepath.Base(path), configFileName) {
 		return nil, nil
 	}
 
-	root := map[string]any{}
-	if len(existing) > 0 {
-		if err := json.Unmarshal(existing, &root); err != nil {
-			return nil, fmt.Errorf("parse existing JSON: %w", err)
-		}
-	}
-
-	for key := range root {
-		if strings.HasPrefix(key, "agent.") || strings.HasPrefix(key, "command.") {
-			if _, ok := fragments[key]; !ok {
-				delete(root, key)
-			}
-		}
-	}
-
-	for key, fragment := range fragments {
-		root[key] = fragment
-	}
-
-	out, err := json.MarshalIndent(root, "", "  ")
+	root, err := parseOrderedObject(existing)
 	if err != nil {
-		return nil, fmt.Errorf("marshal JSON: %w", err)
+		return nil, fmt.Errorf("parse existing JSON: %w", err)
 	}
-	return append(out, '\n'), nil
+
+	// Group fragments by their container ("agent"/"command") and leaf id, seeding each
+	// container from the existing object so native entries and their order survive.
+	containers := map[string]*orderedObject{}
+	for _, key := range sortedKeys(fragments) {
+		group, leaf, ok := splitFragmentKey(key)
+		if !ok {
+			raw, err := json.Marshal(fragments[key])
+			if err != nil {
+				return nil, fmt.Errorf("marshal fragment %q: %w", key, err)
+			}
+			root.set(key, raw)
+			continue
+		}
+
+		container := containers[group]
+		if container == nil {
+			container = newOrderedObject()
+			if existingRaw, ok := root.get(group); ok {
+				if container, err = parseOrderedObject(existingRaw); err != nil {
+					return nil, fmt.Errorf("parse existing %q object: %w", group, err)
+				}
+			}
+			containers[group] = container
+		}
+
+		raw, err := json.Marshal(fragments[key])
+		if err != nil {
+			return nil, fmt.Errorf("marshal fragment %q: %w", key, err)
+		}
+		container.set(leaf, raw)
+	}
+
+	groupNames := make([]string, 0, len(containers))
+	for group := range containers {
+		groupNames = append(groupNames, group)
+	}
+	sort.Strings(groupNames)
+	for _, group := range groupNames {
+		raw, err := containers[group].compact()
+		if err != nil {
+			return nil, fmt.Errorf("serialize %q object: %w", group, err)
+		}
+		root.set(group, raw)
+	}
+
+	compact, err := root.compact()
+	if err != nil {
+		return nil, fmt.Errorf("serialize JSON: %w", err)
+	}
+	var out bytes.Buffer
+	if err := json.Indent(&out, compact, "", "  "); err != nil {
+		return nil, fmt.Errorf("indent JSON: %w", err)
+	}
+	out.WriteByte('\n')
+	return out.Bytes(), nil
+}
+
+func splitFragmentKey(key string) (group, leaf string, ok bool) {
+	for _, group := range fragmentGroups {
+		if strings.HasPrefix(key, group+".") {
+			return group, key[len(group)+1:], true
+		}
+	}
+	return "", "", false
+}
+
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

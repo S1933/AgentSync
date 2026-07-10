@@ -70,11 +70,8 @@ func TestGenerateAgentReview(t *testing.T) {
 	if !strings.Contains(content, "permissionMode: plan") {
 		t.Errorf("expected permissionMode plan, got:\n%s", content)
 	}
-	if !strings.Contains(content, "- Read") {
-		t.Error("expected Read tool")
-	}
-	if !strings.Contains(content, "- Task") {
-		t.Error("expected Task tool from tasks permission")
+	if !strings.Contains(content, "tools: Read, Task") {
+		t.Errorf("expected tools CSV with Read and Task, got:\n%s", content)
 	}
 }
 
@@ -112,7 +109,7 @@ func TestPermissionMapping(t *testing.T) {
 				Read: "allow",
 			},
 			wantTools:      []string{"Read"},
-			wantPermission: "default",
+			wantPermission: "",
 		},
 		{
 			name: "edit allow",
@@ -144,7 +141,7 @@ func TestPermissionMapping(t *testing.T) {
 				Bash: "allow",
 			},
 			wantTools:      []string{"Bash"},
-			wantPermission: "default",
+			wantPermission: "",
 		},
 		{
 			name: "bash patterns",
@@ -152,7 +149,7 @@ func TestPermissionMapping(t *testing.T) {
 				Bash: map[string]string{"go *": "allow", "rm *": "deny"},
 			},
 			wantTools:      []string{"Bash"},
-			wantPermission: "default",
+			wantPermission: "",
 		},
 		{
 			name: "webfetch allow",
@@ -160,7 +157,7 @@ func TestPermissionMapping(t *testing.T) {
 				WebFetch: "allow",
 			},
 			wantTools:      []string{"WebFetch"},
-			wantPermission: "default",
+			wantPermission: "",
 		},
 		{
 			name: "websearch allow",
@@ -168,7 +165,7 @@ func TestPermissionMapping(t *testing.T) {
 				WebSearch: "allow",
 			},
 			wantTools:      []string{"WebSearch"},
-			wantPermission: "default",
+			wantPermission: "",
 		},
 		{
 			name: "tasks allow",
@@ -176,7 +173,7 @@ func TestPermissionMapping(t *testing.T) {
 				Tasks: map[string]string{"build": "allow"},
 			},
 			wantTools:      []string{"Task"},
-			wantPermission: "default",
+			wantPermission: "",
 		},
 		{
 			name: "ask and deny do not add tools",
@@ -187,7 +184,7 @@ func TestPermissionMapping(t *testing.T) {
 				Bash:      "deny",
 			},
 			wantTools:      nil,
-			wantPermission: "default",
+			wantPermission: "",
 		},
 	}
 
@@ -205,16 +202,21 @@ func TestPermissionMapping(t *testing.T) {
 			}
 			content := files[filepath.Join(claudeAgentDir(t), "test.md")]
 
-			for _, tool := range tt.wantTools {
-				if !strings.Contains(content, "- "+tool) {
-					t.Errorf("expected tool %q in:\n%s", tool, content)
+			if len(tt.wantTools) > 0 {
+				want := "tools: " + strings.Join(tt.wantTools, ", ")
+				if !strings.Contains(content, want) {
+					t.Errorf("expected %q in:\n%s", want, content)
 				}
 			}
 			if tt.wantTools == nil && strings.Contains(content, "tools:") {
 				t.Errorf("expected no tools section, got:\n%s", content)
 			}
 
-			if !strings.Contains(content, "permissionMode: "+tt.wantPermission) {
+			if tt.wantPermission == "" {
+				if strings.Contains(content, "permissionMode:") {
+					t.Errorf("expected no permissionMode, got:\n%s", content)
+				}
+			} else if !strings.Contains(content, "permissionMode: "+tt.wantPermission) {
 				t.Errorf("expected permissionMode %q, got:\n%s", tt.wantPermission, content)
 			}
 		})
@@ -223,9 +225,9 @@ func TestPermissionMapping(t *testing.T) {
 
 func TestNoPermissions(t *testing.T) {
 	agent := pivot.AgentDefinition{
-		ID:          "bare",
-		Description: "No permissions",
-		Mode:        "primary",
+		ID:           "bare",
+		Description:  "No permissions",
+		Mode:         "primary",
 		SystemPrompt: "Hello.",
 	}
 
@@ -235,11 +237,39 @@ func TestNoPermissions(t *testing.T) {
 	}
 
 	content := files[filepath.Join(claudeAgentDir(t), "bare.md")]
-	if !strings.Contains(content, "permissionMode: default") {
-		t.Errorf("expected default permissionMode, got:\n%s", content)
+	if strings.Contains(content, "permissionMode:") {
+		t.Errorf("expected no permissionMode when unconstrained, got:\n%s", content)
 	}
 	if strings.Contains(content, "tools:") {
 		t.Errorf("expected no tools, got:\n%s", content)
+	}
+}
+
+func TestClaudeExtensionOverrides(t *testing.T) {
+	agent := pivot.AgentDefinition{
+		ID:           "ask",
+		Description:  "Ask agent",
+		Mode:         "primary",
+		SystemPrompt: "Hello.",
+		Extensions: map[string]any{
+			"claude": map[string]any{
+				"tools":          []any{"Read", "Glob", "Grep", "Bash"},
+				"permissionMode": "plan",
+			},
+		},
+	}
+
+	files, err := claude.GenerateAgent(agent, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[filepath.Join(claudeAgentDir(t), "ask.md")]
+
+	if !strings.Contains(content, "tools: Read, Glob, Grep, Bash") {
+		t.Errorf("expected explicit tools CSV from extensions.claude.tools, got:\n%s", content)
+	}
+	if !strings.Contains(content, "permissionMode: plan") {
+		t.Errorf("expected permissionMode plan from extensions.claude, got:\n%s", content)
 	}
 }
 

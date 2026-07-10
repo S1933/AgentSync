@@ -1,11 +1,8 @@
 ---
 name: build
 description: Build and deploy agent
+tools: Read, Bash, WebSearch
 model: anthropic/claude-sonnet-4-5
-tools:
-  - Read
-  - Bash
-  - WebSearch
 permissionMode: default
 ---
 

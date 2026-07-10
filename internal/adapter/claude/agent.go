@@ -13,11 +13,11 @@ import (
 )
 
 type agentFrontmatter struct {
-	Name           string   `yaml:"name"`
-	Description    string   `yaml:"description"`
-	Model          string   `yaml:"model,omitempty"`
-	Tools          []string `yaml:"tools,omitempty"`
-	PermissionMode string   `yaml:"permissionMode"`
+	Name           string `yaml:"name"`
+	Description    string `yaml:"description"`
+	Tools          string `yaml:"tools,omitempty"`
+	Model          string `yaml:"model,omitempty"`
+	PermissionMode string `yaml:"permissionMode,omitempty"`
 }
 
 // GenerateAgent produces a Claude Code agent Markdown file with YAML frontmatter.
@@ -35,8 +35,8 @@ func generateAgentFile(agent pivot.AgentDefinition, pivotDir, baseDir string) (m
 		Name:           agent.ID,
 		Description:    agent.Description,
 		Model:          agent.Model,
-		Tools:          mapTools(agent.Permissions),
-		PermissionMode: mapPermissionMode(agent.Permissions),
+		Tools:          strings.Join(resolveTools(agent), ", "),
+		PermissionMode: resolvePermissionMode(agent),
 	}
 
 	fmYAML, err := marshalFrontmatter(&fm)
@@ -82,6 +82,66 @@ func resolvePromptContent(agent pivot.AgentDefinition, pivotDir string) (string,
 	return "", nil
 }
 
+// resolveTools returns the explicit Claude tools list from extensions.claude.tools
+// when present, otherwise derives one from the pivot permissions.
+func resolveTools(agent pivot.AgentDefinition) []string {
+	if tools, ok := claudeStringSlice(agent.Extensions, "tools"); ok {
+		return tools
+	}
+	return mapTools(agent.Permissions)
+}
+
+// resolvePermissionMode returns extensions.claude.permissionMode when set, otherwise
+// derives it from the pivot permissions. Returns "" when nothing constrains it, so the
+// frontmatter omits the field rather than injecting a spurious "default".
+func resolvePermissionMode(agent pivot.AgentDefinition) string {
+	if mode, ok := claudeString(agent.Extensions, "permissionMode"); ok {
+		return mode
+	}
+	return mapPermissionMode(agent.Permissions)
+}
+
+func claudeExtension(extensions map[string]any) map[string]any {
+	if extensions == nil {
+		return nil
+	}
+	claude, ok := extensions["claude"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	return claude
+}
+
+func claudeString(extensions map[string]any, key string) (string, bool) {
+	claude := claudeExtension(extensions)
+	if claude == nil {
+		return "", false
+	}
+	s, ok := claude[key].(string)
+	return s, ok
+}
+
+func claudeStringSlice(extensions map[string]any, key string) ([]string, bool) {
+	claude := claudeExtension(extensions)
+	if claude == nil {
+		return nil, false
+	}
+	switch v := claude[key].(type) {
+	case []string:
+		return v, true
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
 func mapTools(perms *pivot.Permissions) []string {
 	if perms == nil {
 		return nil
@@ -108,7 +168,7 @@ func mapTools(perms *pivot.Permissions) []string {
 
 func mapPermissionMode(perms *pivot.Permissions) string {
 	if perms == nil || perms.Edit == "" {
-		return "default"
+		return ""
 	}
 	switch perms.Edit {
 	case "allow":

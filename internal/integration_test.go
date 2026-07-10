@@ -151,8 +151,7 @@ func TestEndToEnd_PushClaudeCode(t *testing.T) {
 		"name: build",
 		"description: Build and deploy agent",
 		"permissionMode: default",
-		"- Read",
-		"- Bash",
+		"tools: Read, Bash",
 		"You are a build agent responsible for CI/CD tasks.",
 	} {
 		if !strings.Contains(content, want) {
@@ -244,8 +243,12 @@ func TestEndToEnd_RemoveAgentFromPivot(t *testing.T) {
 	if err := json.Unmarshal(configData, &root); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := root["agent.scan"]; ok {
-		t.Fatal("agent.scan should be removed from opencode.json after agent deleted from pivot")
+	agents, ok := root["agent"].(map[string]any)
+	if !ok {
+		t.Fatalf("agent = %#v, want nested object", root["agent"])
+	}
+	if _, ok := agents["scan"]; !ok {
+		t.Error("agent scan should be preserved after pivot deletion (upsert-only policy)")
 	}
 }
 
@@ -293,9 +296,13 @@ func TestEndToEnd_PermissionMapping(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	build, ok := root["agent.build"].(map[string]any)
+	agents, ok := root["agent"].(map[string]any)
 	if !ok {
-		t.Fatalf("missing agent.build fragment: %#v", root)
+		t.Fatalf("agent = %#v, want nested object", root["agent"])
+	}
+	build, ok := agents["build"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing nested agent.build: %#v", agents)
 	}
 	perms, ok := build["permission"].(map[string]any)
 	if !ok {
@@ -328,10 +335,10 @@ func TestEndToEnd_PermissionMapping(t *testing.T) {
 	if !strings.Contains(claudeContent, "permissionMode: default") {
 		t.Errorf("expected permissionMode default for edit ask:\n%s", claudeContent)
 	}
-	if !strings.Contains(claudeContent, "- Bash") {
+	if !strings.Contains(claudeContent, "tools: ") || !strings.Contains(claudeContent, "Bash") {
 		t.Errorf("expected Bash tool for bash patterns:\n%s", claudeContent)
 	}
-	if !strings.Contains(claudeContent, "- Read") {
+	if !strings.Contains(claudeContent, "Read") {
 		t.Errorf("expected Read tool for read allow:\n%s", claudeContent)
 	}
 }
@@ -488,10 +495,26 @@ func assertOpenCodePush(t *testing.T, env integrationEnv) {
 		t.Fatal(err)
 	}
 
-	for _, key := range []string{"agent.build", "agent.review", "agent.scan", "command.ship", "command.lint"} {
-		if _, ok := root[key]; !ok {
-			t.Errorf("opencode.json missing %q", key)
+	agents, ok := root["agent"].(map[string]any)
+	if !ok {
+		t.Fatalf("agent = %#v, want nested object", root["agent"])
+	}
+	for _, id := range []string{"build", "review", "scan"} {
+		if _, ok := agents[id]; !ok {
+			t.Errorf("opencode.json missing agent %q", id)
 		}
+	}
+	commands, ok := root["command"].(map[string]any)
+	if !ok {
+		t.Fatalf("command = %#v, want nested object", root["command"])
+	}
+	for _, id := range []string{"ship", "lint"} {
+		if _, ok := commands[id]; !ok {
+			t.Errorf("opencode.json missing command %q", id)
+		}
+	}
+	if _, ok := root["agent.build"]; ok {
+		t.Error("must not write flat dotted agent.build key")
 	}
 	if root["theme"] != "dark" {
 		t.Errorf("theme = %v, want dark (preserved from existing config)", root["theme"])
@@ -503,8 +526,8 @@ func assertOpenCodePush(t *testing.T, env integrationEnv) {
 	if provider["default"] != "anthropic" {
 		t.Errorf("provider.default = %v, want anthropic", provider["default"])
 	}
-	if _, ok := root["agent.legacy-helper"]; ok {
-		t.Error("expected stale agent.legacy-helper removed from opencode.json after push")
+	if _, ok := agents["legacy-helper"]; !ok {
+		t.Error("native-only agent legacy-helper should be preserved under upsert-only policy")
 	}
 
 	for _, prompt := range []string{"build.md", "review.md", "scan.md"} {
