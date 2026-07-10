@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/jnuel/agentsync/internal/adapter"
+	"github.com/jnuel/agentsync/internal/adapter/claude"
 	"github.com/jnuel/agentsync/internal/adapter/opencode"
 	"github.com/jnuel/agentsync/internal/pivot"
 )
@@ -82,6 +83,7 @@ func Generate(pf *pivot.PivotFile, pivotDir string, adapters map[string]adapter.
 
 // Ensure opencode.Adapter satisfies optional interfaces at compile time.
 var (
+	_ pivotDirSetter      = (*claude.Adapter)(nil)
 	_ pivotDirSetter      = (*opencode.Adapter)(nil)
 	_ fragmentAccumulator = (*opencode.Adapter)(nil)
 )

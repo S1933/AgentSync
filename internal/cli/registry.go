@@ -2,13 +2,15 @@ package cli
 
 import (
 	"github.com/jnuel/agentsync/internal/adapter"
+	"github.com/jnuel/agentsync/internal/adapter/claude"
 	"github.com/jnuel/agentsync/internal/adapter/opencode"
 )
 
 // Registry returns all available adapters keyed by name.
 func Registry() map[string]adapter.Adapter {
 	return map[string]adapter.Adapter{
-		"opencode": opencode.NewAdapter(),
+		"claude-code": claude.NewAdapter(),
+		"opencode":    opencode.NewAdapter(),
 	}
 }
 

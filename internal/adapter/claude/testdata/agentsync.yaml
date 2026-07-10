@@ -1,0 +1,32 @@
+version: "1"
+agents:
+  - id: build
+    description: "Build and deploy agent"
+    mode: primary
+    model: anthropic/claude-sonnet-4-5
+    systemPrompt: |
+      You are a build agent responsible for CI/CD.
+    permissions:
+      read: allow
+      edit: ask
+      bash:
+        "go *": allow
+        "npm *": allow
+      webfetch: deny
+      websearch: allow
+  - id: review
+    description: "Code review sub-agent"
+    mode: subagent
+    systemPrompt: |
+      You are a code review agent.
+    permissions:
+      read: allow
+      edit: deny
+      tasks:
+        build: allow
+commands:
+  - id: ship
+    description: "Ship current changes"
+    template: |
+      Review and ship the current changes.
+    agent: build
