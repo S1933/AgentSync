@@ -57,7 +57,12 @@ func Generate(pf *pivot.PivotFile, pivotDir string, adapters map[string]adapter.
 		if acc, ok := adpt.(fragmentAccumulator); ok {
 			configPath := acc.ConfigPath()
 			var existing []byte
-			if data, err := os.ReadFile(configPath); err == nil {
+			data, err := os.ReadFile(configPath)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					return nil, fmt.Errorf("%s: read %s: %w", name, filepath.Base(configPath), err)
+				}
+			} else {
 				existing = data
 			}
 			merged, err := adpt.MergeFile(configPath, existing, acc.Fragments())

@@ -280,6 +280,40 @@ func TestAdapterGenerateAgentIntegration(t *testing.T) {
 	}
 }
 
+func TestEmptyPermissionOverrideFallsBackToRead(t *testing.T) {
+	agent := pivot.AgentDefinition{
+		ID: "test",
+		Permissions: &pivot.Permissions{
+			Read: "allow",
+			Edit: "deny",
+		},
+		Extensions: map[string]any{
+			"opencode": map[string]any{
+				"permission": map[string]any{},
+			},
+		},
+	}
+
+	fragment, _, _, err := opencode.GenerateAgentFragment(agent, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	perm, ok := fragment["permission"].(map[string]any)
+	if !ok {
+		t.Fatalf("permission = %T, want map[string]any", fragment["permission"])
+	}
+
+	for _, key := range []string{"glob", "grep", "list", "lsp"} {
+		if perm[key] != "allow" {
+			t.Errorf("permission[%q] = %v, want allow", key, perm[key])
+		}
+	}
+	if perm["edit"] != "deny" {
+		t.Errorf("permission[edit] = %v, want deny", perm["edit"])
+	}
+}
+
 func TestValidateAgent(t *testing.T) {
 	a := opencode.NewAdapter()
 	err := a.ValidateAgent(pivot.AgentDefinition{ID: "x", Mode: "invalid"})
