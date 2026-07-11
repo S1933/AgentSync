@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jnuel/agentsync/internal/fsutil"
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/S1933/Shenron/internal/fsutil"
+	"github.com/S1933/Shenron/internal/pivot"
 )
 
 const configFileName = "opencode.json"
@@ -114,7 +114,7 @@ func (a *Adapter) ConfigPath() string {
 	return filepath.Join(a.baseDir, configFileName)
 }
 
-// fragmentGroups are the nested containers agentsync-managed fragments live under.
+// fragmentGroups are the nested containers shenron-managed fragments live under.
 var fragmentGroups = []string{"agent", "command"}
 
 // MergeFile upserts fragments into the nested agent/command objects of an existing

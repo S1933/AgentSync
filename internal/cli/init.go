@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jnuel/agentsync/internal/fsutil"
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/S1933/Shenron/internal/fsutil"
+	"github.com/S1933/Shenron/internal/pivot"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -28,14 +28,14 @@ type InitOptions struct {
 func NewInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Generate a skeleton agentsync.yaml from existing native configs",
+		Short: "Generate a skeleton shenron.yaml from existing native configs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return RunInit(InitOptions{})
 		},
 	}
 }
 
-// RunInit bootstraps agentsync.yaml from the first available native config source.
+// RunInit bootstraps shenron.yaml from the first available native config source.
 func RunInit(opts InitOptions) error {
 	workDir := opts.WorkDir
 	if workDir == "" {
@@ -46,9 +46,9 @@ func RunInit(opts InitOptions) error {
 		workDir = cwd
 	}
 
-	outputPath := filepath.Join(workDir, "agentsync.yaml")
+	outputPath := filepath.Join(workDir, "shenron.yaml")
 	if _, err := os.Stat(outputPath); err == nil {
-		return fmt.Errorf("agentsync.yaml already exists in %s (edit the existing file instead)", workDir)
+		return fmt.Errorf("shenron.yaml already exists in %s (edit the existing file instead)", workDir)
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("check existing pivot file: %w", err)
 	}
@@ -67,7 +67,7 @@ func RunInit(opts InitOptions) error {
 	}
 
 	if err := fsutil.WriteFileAtomic(outputPath, data, 0o644); err != nil {
-		return fmt.Errorf("write agentsync.yaml: %w", err)
+		return fmt.Errorf("write shenron.yaml: %w", err)
 	}
 
 	fmt.Printf("Created %s from %s (%d agents, %d commands)\n", outputPath, source, len(pf.Agents), len(pf.Commands))

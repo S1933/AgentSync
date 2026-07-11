@@ -1,8 +1,8 @@
-# AgentSync Architecture
+# Shenron Architecture
 
 ## Purpose and scope
 
-AgentSync is a Go command-line application that treats `agentsync.yaml` as the
+Shenron is a Go command-line application that treats `shenron.yaml` as the
 authoritative, tool-neutral description of coding-assistant agents, commands,
 permissions, prompts, and skill references. It validates that pivot model and
 renders it into the native configuration formats used by Claude Code and
@@ -11,7 +11,7 @@ OpenCode.
 The system is intentionally one-way:
 
 ```text
-agentsync.yaml -> validated pivot model -> target adapters -> native files
+shenron.yaml -> validated pivot model -> target adapters -> native files
                                             |
                                             v
                                   diff and state tracking
@@ -34,12 +34,12 @@ native configuration back into the pivot.
 
 ```mermaid
 flowchart LR
-    User[User] --> CLI[agents-sync CLI]
-    Pivot[agentsync.yaml] --> CLI
+    User[User] --> CLI[shenron CLI]
+    Pivot[shenron.yaml] --> CLI
     Prompt[Referenced prompt files] --> CLI
     CLI --> Claude[Claude Code config\n~/.claude]
     CLI --> OpenCode[OpenCode config\n~/.config/opencode]
-    CLI --> State[.agentsync-state.json]
+    CLI --> State[.shenron-state.json]
 ```
 
 The application accesses only local files. There are no network calls, daemon
@@ -50,7 +50,7 @@ implementation.
 
 | Module | Responsibility | Main interface |
 |---|---|---|
-| `cmd/agents-sync` | Process entry point and root Cobra command | Executable invocation |
+| `cmd/shenron` | Process entry point and root Cobra command | Executable invocation |
 | `internal/cli` | Command construction and synchronization orchestration | `RunInit`, `RunValidate`, `RunDiff`, `RunPush`, `Generate` |
 | `internal/pivot` | Pivot schema, YAML parsing, validation, and discovery | `Discover`, `Parse`, pivot types |
 | `internal/adapter` | Seam between the tool-neutral model and target formats | `Adapter` |
@@ -64,7 +64,7 @@ Dependencies point inward toward the pivot model. Target adapters depend on
 
 ```mermaid
 flowchart TD
-    Main[cmd/agents-sync] --> CLI[internal/cli]
+    Main[cmd/shenron] --> CLI[internal/cli]
     CLI --> Pivot[internal/pivot]
     CLI --> AdapterInterface[internal/adapter]
     CLI --> Diff[internal/diff]
@@ -118,13 +118,13 @@ sequenceDiagram
     U->>C: diff or push
     C->>P: Discover(config flag or current directory)
     P-->>C: pivot path
-    C->>F: Read agentsync.yaml
+    C->>F: Read shenron.yaml
     C->>P: Parse and validate
     P-->>C: PivotFile
     C->>A: Generate agents and commands
     A->>F: Read existing shared config when merging
     A-->>C: target -> path -> desired content
-    C->>D: Load .agentsync-state.json
+    C->>D: Load .shenron-state.json
     C->>D: Compare desired content, disk, and prior hashes
     alt diff / dry run
         D-->>U: changes, warnings, unified diff
@@ -140,8 +140,8 @@ sequenceDiagram
 ### Discovery
 
 `pivot.Discover` gives an explicit `--config` path priority, otherwise walks
-upward from the current directory looking for `agentsync.yaml`, then falls back
-to `$HOME/.agentsync/agentsync.yaml`.
+upward from the current directory looking for `shenron.yaml`, then falls back
+to `$HOME/.shenron/shenron.yaml`.
 
 ### Generation
 
@@ -170,7 +170,7 @@ is classified as manually modified. `push` refuses to overwrite it unless
 `--force` is supplied. Files previously tracked but no longer generated are
 classified as orphaned and reported; they are not deleted.
 
-The state file lives beside the pivot as `.agentsync-state.json`. It records the
+The state file lives beside the pivot as `.shenron-state.json`. It records the
 content hash, path, and owning adapter for each written file. Adapter ownership
 keeps a targeted push from reporting another target's files as orphaned.
 
@@ -238,7 +238,7 @@ pivot does not remove the corresponding nested entry from `opencode.json`.
 
 | Command | Read path | Write path | Important behavior |
 |---|---|---|---|
-| `init` | First usable OpenCode config, then Claude config | New `./agentsync.yaml` | Refuses to overwrite an existing pivot |
+| `init` | First usable OpenCode config, then Claude config | New `./shenron.yaml` | Refuses to overwrite an existing pivot |
 | `validate` | Discovered pivot and referenced prompt files | None | Runs pivot validation only |
 | `diff` | Pivot, native files, state | None | Reports per-target changes and orphans |
 | `push --dry-run` | Same as `diff` | None | Delegates to the diff path |
@@ -299,7 +299,7 @@ definition, return complete files directly and let `MergeFile` return `nil`.
 ## Repository layout
 
 ```text
-cmd/agents-sync/              executable entry point
+cmd/shenron/              executable entry point
 internal/
   cli/                        commands, registry, orchestration
   pivot/                      canonical schema, parsing, validation, discovery

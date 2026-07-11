@@ -6,18 +6,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jnuel/agentsync/internal/cli"
+	"github.com/S1933/Shenron/internal/cli"
 )
 
 func TestInitRefusesExisting(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "agentsync.yaml"), []byte("version: \"1\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "shenron.yaml"), []byte("version: \"1\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	err := cli.RunInit(cli.InitOptions{WorkDir: dir})
 	if err == nil {
-		t.Fatal("expected error when agentsync.yaml exists")
+		t.Fatal("expected error when shenron.yaml exists")
 	}
 	if !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("unexpected error: %v", err)
@@ -36,7 +36,7 @@ func TestInitFromOpenCode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outPath := filepath.Join(dir, "agentsync.yaml")
+	outPath := filepath.Join(dir, "shenron.yaml")
 	data, err := os.ReadFile(outPath)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestInitFromClaudeCode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outPath := filepath.Join(dir, "agentsync.yaml")
+	outPath := filepath.Join(dir, "shenron.yaml")
 	data, err := os.ReadFile(outPath)
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestInitFallsBackToClaudeOnBrokenOpenCode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outPath := filepath.Join(dir, "agentsync.yaml")
+	outPath := filepath.Join(dir, "shenron.yaml")
 	data, err := os.ReadFile(outPath)
 	if err != nil {
 		t.Fatal(err)

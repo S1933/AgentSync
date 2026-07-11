@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/S1933/Shenron/internal/pivot"
 	"github.com/spf13/cobra"
 )
 

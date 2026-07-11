@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jnuel/agentsync/internal/adapter"
-	"github.com/jnuel/agentsync/internal/diff"
-	"github.com/jnuel/agentsync/internal/fsutil"
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/S1933/Shenron/internal/adapter"
+	"github.com/S1933/Shenron/internal/diff"
+	"github.com/S1933/Shenron/internal/fsutil"
+	"github.com/S1933/Shenron/internal/pivot"
 	"github.com/spf13/cobra"
 )
 
@@ -113,7 +113,7 @@ func runPush(configPath, target string, force bool, adapters map[string]adapter.
 	if !wroteAny {
 		fmt.Println("No changes")
 	} else {
-		fmt.Printf("state updated: %s\n", filepath.Join(pivotDir, ".agentsync-state.json"))
+		fmt.Printf("state updated: %s\n", filepath.Join(pivotDir, ".shenron-state.json"))
 	}
 
 	return nil

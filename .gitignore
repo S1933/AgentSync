@@ -1,5 +1,5 @@
 # Binaries
-/agents-sync
+/shenron
 /bin/
 *.exe
 *.dll
@@ -22,11 +22,11 @@
 .DS_Store
 Thumbs.db
 
-# AgentSync state file
-.agentsync-state.json
+# Shenron state file
+.shenron-state.json
 
 # Local personal pivot (per-user config, not tracked)
-/agentsync.yaml
+/shenron.yaml
 
 # Claude Code local settings
 .claude/

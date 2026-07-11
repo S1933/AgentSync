@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-const pivotFileName = "agentsync.yaml"
+const pivotFileName = "shenron.yaml"
 
 // Discover resolves the pivot file path from an explicit flag, walk-up search, or home fallback.
 func Discover(flagPath string) (string, error) {
@@ -42,10 +42,10 @@ func Discover(flagPath string) (string, error) {
 		return "", fmt.Errorf("get home directory: %w", err)
 	}
 
-	fallback := filepath.Join(home, ".agentsync", pivotFileName)
+	fallback := filepath.Join(home, ".shenron", pivotFileName)
 	if _, err := os.Stat(fallback); err == nil {
 		return filepath.Abs(fallback)
 	}
 
-	return "", fmt.Errorf("agentsync.yaml not found")
+	return "", fmt.Errorf("shenron.yaml not found")
 }

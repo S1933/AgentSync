@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jnuel/agentsync/internal/adapter/opencode"
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/S1933/Shenron/internal/adapter/opencode"
+	"github.com/S1933/Shenron/internal/pivot"
 )
 
 func testPivot(t *testing.T) (*pivot.PivotFile, string) {
 	t.Helper()
 	dir := filepath.Join("testdata")
-	data, err := os.ReadFile(filepath.Join(dir, "agentsync.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, "shenron.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

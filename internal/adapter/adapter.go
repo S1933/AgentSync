@@ -1,6 +1,6 @@
 package adapter
 
-import "github.com/jnuel/agentsync/internal/pivot"
+import "github.com/S1933/Shenron/internal/pivot"
 
 type Adapter interface {
 	Name() string

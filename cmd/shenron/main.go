@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/jnuel/agentsync/internal/cli"
+	"github.com/S1933/Shenron/internal/cli"
 	"github.com/spf13/cobra"
 )
 
@@ -11,11 +11,11 @@ var configPath string
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "agents-sync",
+		Use:   "shenron",
 		Short: "Sync agent configurations across AI coding assistants",
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to agentsync.yaml pivot file")
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to shenron.yaml pivot file")
 
 	rootCmd.AddCommand(
 		cli.NewDiffCmd(&configPath),
@@ -28,4 +28,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-

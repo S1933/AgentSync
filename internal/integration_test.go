@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jnuel/agentsync/internal/adapter"
-	"github.com/jnuel/agentsync/internal/adapter/claude"
-	"github.com/jnuel/agentsync/internal/adapter/opencode"
-	"github.com/jnuel/agentsync/internal/cli"
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/S1933/Shenron/internal/adapter"
+	"github.com/S1933/Shenron/internal/adapter/claude"
+	"github.com/S1933/Shenron/internal/adapter/opencode"
+	"github.com/S1933/Shenron/internal/cli"
+	"github.com/S1933/Shenron/internal/pivot"
 	"gopkg.in/yaml.v3"
 )
 
@@ -410,7 +410,7 @@ func TestEndToEnd_Init(t *testing.T) {
 		t.Fatalf("init: %v", err)
 	}
 
-	outPath := filepath.Join(tmp, "agentsync.yaml")
+	outPath := filepath.Join(tmp, "shenron.yaml")
 	data, err := os.ReadFile(outPath)
 	if err != nil {
 		t.Fatal(err)
@@ -459,8 +459,8 @@ func newIntegrationEnv(t *testing.T) integrationEnv {
 	t.Helper()
 
 	tmp := t.TempDir()
-	pivotPath := filepath.Join(tmp, "agentsync.yaml")
-	if err := copyFile(filepath.Join(integrationFixtureDir, "agentsync.yaml"), pivotPath); err != nil {
+	pivotPath := filepath.Join(tmp, "shenron.yaml")
+	if err := copyFile(filepath.Join(integrationFixtureDir, "shenron.yaml"), pivotPath); err != nil {
 		t.Fatal(err)
 	}
 	if err := copyDir(filepath.Join(integrationFixtureDir, "prompts"), filepath.Join(tmp, "prompts")); err != nil {
@@ -577,7 +577,7 @@ func assertOpenCodePush(t *testing.T, env integrationEnv) {
 
 func assertStateFile(t *testing.T, pivotDir string) {
 	t.Helper()
-	statePath := filepath.Join(pivotDir, ".agentsync-state.json")
+	statePath := filepath.Join(pivotDir, ".shenron-state.json")
 	if _, err := os.Stat(statePath); err != nil {
 		t.Fatalf("state file missing: %v", err)
 	}

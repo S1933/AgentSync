@@ -7,17 +7,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jnuel/agentsync/internal/adapter"
-	"github.com/jnuel/agentsync/internal/adapter/claude"
-	"github.com/jnuel/agentsync/internal/adapter/opencode"
-	"github.com/jnuel/agentsync/internal/cli"
+	"github.com/S1933/Shenron/internal/adapter"
+	"github.com/S1933/Shenron/internal/adapter/claude"
+	"github.com/S1933/Shenron/internal/adapter/opencode"
+	"github.com/S1933/Shenron/internal/cli"
 )
 
 func TestRunPushManualEditDetection(t *testing.T) {
 	tmp := t.TempDir()
 	fixtureDir := filepath.Join("..", "adapter", "opencode", "testdata")
-	pivotPath := filepath.Join(tmp, "agentsync.yaml")
-	copyFile(t, filepath.Join(fixtureDir, "agentsync.yaml"), pivotPath)
+	pivotPath := filepath.Join(tmp, "shenron.yaml")
+	copyFile(t, filepath.Join(fixtureDir, "shenron.yaml"), pivotPath)
 
 	opencodeDir := filepath.Join(tmp, "opencode")
 	adapters := map[string]adapter.Adapter{
@@ -84,8 +84,8 @@ func copyFile(t *testing.T, src, dst string) {
 func TestRunPushTargetDoesNotWarnClaudeOrphans(t *testing.T) {
 	tmp := t.TempDir()
 	fixtureDir := filepath.Join("..", "..", "testdata", "integration")
-	pivotPath := filepath.Join(tmp, "agentsync.yaml")
-	copyFile(t, filepath.Join(fixtureDir, "agentsync.yaml"), pivotPath)
+	pivotPath := filepath.Join(tmp, "shenron.yaml")
+	copyFile(t, filepath.Join(fixtureDir, "shenron.yaml"), pivotPath)
 	if err := copyTree(filepath.Join(fixtureDir, "prompts"), filepath.Join(tmp, "prompts")); err != nil {
 		t.Fatal(err)
 	}

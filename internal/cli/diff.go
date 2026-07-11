@@ -6,8 +6,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/jnuel/agentsync/internal/adapter"
-	"github.com/jnuel/agentsync/internal/diff"
+	"github.com/S1933/Shenron/internal/adapter"
+	"github.com/S1933/Shenron/internal/diff"
 	"github.com/spf13/cobra"
 )
 

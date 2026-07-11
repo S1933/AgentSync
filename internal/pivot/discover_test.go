@@ -38,7 +38,7 @@ func TestDiscoverWalkUpFindsParentDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pivotPath := filepath.Join(root, "agentsync.yaml")
+	pivotPath := filepath.Join(root, "shenron.yaml")
 	if err := os.WriteFile(pivotPath, []byte("version: \"1\"\nagents: []\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestDiscoverWalkUpFindsParentDirectory(t *testing.T) {
 
 func TestDiscoverFallbackToHome(t *testing.T) {
 	root := t.TempDir()
-	homePivot := filepath.Join(root, ".agentsync", "agentsync.yaml")
+	homePivot := filepath.Join(root, ".shenron", "shenron.yaml")
 	if err := os.MkdirAll(filepath.Dir(homePivot), 0o755); err != nil {
 		t.Fatal(err)
 	}

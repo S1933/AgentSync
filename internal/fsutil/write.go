@@ -13,7 +13,7 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("create parent directories: %w", err)
 	}
 
-	tmp, err := os.CreateTemp(dir, ".agentsync-*")
+	tmp, err := os.CreateTemp(dir, ".shenron-*")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}

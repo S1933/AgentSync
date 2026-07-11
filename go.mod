@@ -1,4 +1,4 @@
-module github.com/jnuel/agentsync
+module github.com/S1933/Shenron
 
 go 1.24.2
 

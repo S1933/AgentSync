@@ -5,16 +5,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jnuel/agentsync/internal/adapter"
-	"github.com/jnuel/agentsync/internal/adapter/opencode"
-	"github.com/jnuel/agentsync/internal/cli"
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/S1933/Shenron/internal/adapter"
+	"github.com/S1933/Shenron/internal/adapter/opencode"
+	"github.com/S1933/Shenron/internal/cli"
+	"github.com/S1933/Shenron/internal/pivot"
 )
 
 func TestGenerateOpenCode(t *testing.T) {
 	tmp := t.TempDir()
 	dir := filepath.Join("..", "adapter", "opencode", "testdata")
-	data, err := os.ReadFile(filepath.Join(dir, "agentsync.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, "shenron.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestGenerateConfigReadError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(configPath, 0o644) })
 
-	data, err := os.ReadFile(filepath.Join(dir, "agentsync.yaml"))
+	data, err := os.ReadFile(filepath.Join(dir, "shenron.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/jnuel/agentsync/internal/fsutil"
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/S1933/Shenron/internal/fsutil"
+	"github.com/S1933/Shenron/internal/pivot"
 )
 
 // Adapter implements the Claude Code target adapter.

@@ -1,4 +1,4 @@
-# PRD — AgentSync
+# PRD — Shenron
 
 ## Problem statement
 
@@ -15,7 +15,7 @@ L'objectif est de remplacer cette duplication manuelle par un outil qui maintien
 
 1. **Source unique.** Une configuration déclarative (fichier YAML) qui décrit agents, skills, et slash-commands de façon outil-agnostique, dans un seul endroit.
 
-2. **Propagation automatisée.** Une commande `agents-sync push` qui lit le fichier pivot et écrit/actualise les fichiers de configuration natifs dans les emplacements attendus par chaque CLI cible.
+2. **Propagation automatisée.** Une commande `shenron push` qui lit le fichier pivot et écrit/actualise les fichiers de configuration natifs dans les emplacements attendus par chaque CLI cible.
 
 3. **Extensible.** Ajouter le support d'un nouveau CLI ne nécessite que l'implémentation d'un adaptateur — aucun changement dans le cœur du parsing ni dans le CLI.
 
@@ -35,20 +35,20 @@ L'objectif est de remplacer cette duplication manuelle par un outil qui maintien
 
 ### FR1 — Fichier pivot
 
-Le fichier pivot (`agentsync.yaml`) est un fichier YAML contenant :
+Le fichier pivot (`shenron.yaml`) est un fichier YAML contenant :
 
 - `version` : chaîne de version du schéma (ex. `"1"`)
 - `agents` : liste de définitions d'agents
 - `commands` : liste de définitions de slash-commands
 - `skills` (optionnel) : liste de références de skills (`[{name}]`), lecture seule. Les skills eux-mêmes ne sont pas gérés par le pivot (déjà standardisés via `agentskills.io`)
 
-Le fichier est découvert par résolution ascendante depuis le répertoire courant jusqu'à la racine du filesystem (comportement similaire à `.gitignore`). Le premier `agentsync.yaml` trouvé est utilisé. Un flag `-c <path>` permet de spécifier un chemin explicite.
+Le fichier est découvert par résolution ascendante depuis le répertoire courant jusqu'à la racine du filesystem (comportement similaire à `.gitignore`). Le premier `shenron.yaml` trouvé est utilisé. Un flag `-c <path>` permet de spécifier un chemin explicite.
 
 **Emplacements de recherche (dans l'ordre) :**
-1. `$CWD/agentsync.yaml`
-2. `$CWD/../agentsync.yaml`
+1. `$CWD/shenron.yaml`
+2. `$CWD/../shenron.yaml`
 3. ... (remontée)
-4. `$HOME/.agentsync/agentsync.yaml`
+4. `$HOME/.shenron/shenron.yaml`
 
 ### FR2 — Définition d'agent (schéma pivot)
 
@@ -62,7 +62,7 @@ Chaque agent dans le pivot a les champs suivants :
 | `model` | string (provider/id) ou null | Non | Modèle LLM à utiliser. `null` = hérite du modèle par défaut du CLI cible. Exemples : `anthropic/claude-sonnet-4-5`, `opencode/deepseek-v4-pro` |
 | `temperature` | float (0.0-2.0) | Non | Température du modèle (optionnelle) |
 | `systemPrompt` | string multiligne | Non | Instructions système de l'agent (corps du prompt). Si absent, l'agent n'a que la description comme contexte — utile pour les agents "routeurs" qui délèguent. |
-| `promptFile` | string (chemin relatif au répertoire du fichier pivot) | Non | Alternative à `systemPrompt` : référence un fichier Markdown externe contenant le prompt système. Exemple : `prompts/build.md` (relatif au répertoire où se trouve `agentsync.yaml`). |
+| `promptFile` | string (chemin relatif au répertoire du fichier pivot) | Non | Alternative à `systemPrompt` : référence un fichier Markdown externe contenant le prompt système. Exemple : `prompts/build.md` (relatif au répertoire où se trouve `shenron.yaml`). |
 | `permissions` | objet | Non | Permissions de l'agent (voir section dédiée) |
 | `extensions` | map string→any | Non | Champs spécifiques à un CLI cible (ex. `claudeCode.maxTurns`, `opencode.steps`). Le cœur ignore ces champs ; les adaptateurs les consomment. |
 | `skills` | list[string] (kebab-case) | Non | Skills que cet agent déclare utiliser. Référence des noms de skills dans `~/.agents/skills/`. Les adaptateurs émettent ce champ dans le format natif. |
@@ -121,7 +121,7 @@ Chaque commande dans le pivot :
 | `agent` | string (référence un `agents[].id`) | Non | Agent à utiliser pour exécuter cette commande. Si absent, l'agent par défaut du CLI cible est utilisé. |
 | `model` | string (provider/id) | Non | Modèle à utiliser pour cette commande (prioritaire sur le modèle de l'agent) |
 
-### FR5 — Commande `agents-sync diff`
+### FR5 — Commande `shenron diff`
 
 Affiche un résumé des différences entre le fichier pivot et la configuration native existante dans le(s) CLI cible(s) :
 
@@ -132,9 +132,9 @@ Affiche un résumé des différences entre le fichier pivot et la configuration 
 
 Sortie en texte coloré dans le terminal. Pas de sortie JSON en v1.
 
-La détection des modifications manuelles s'appuie sur un fichier d'état `.agentsync-state.json` stocké dans le même répertoire que le fichier pivot. Ce fichier enregistre le hash du contenu écrit lors du dernier `push` réussi.
+La détection des modifications manuelles s'appuie sur un fichier d'état `.shenron-state.json` stocké dans le même répertoire que le fichier pivot. Ce fichier enregistre le hash du contenu écrit lors du dernier `push` réussi.
 
-### FR6 — Commande `agents-sync push`
+### FR6 — Commande `shenron push`
 
 Lit le fichier pivot, génère la configuration native pour le(s) CLI cible(s), et écrit les fichiers. Options :
 
@@ -142,7 +142,7 @@ Lit le fichier pivot, génère la configuration native pour le(s) CLI cible(s), 
 - `--dry-run` : équivalent à `diff` (pas d'écriture).
 - `--force` : écrase les fichiers natifs même s'ils ont été modifiés manuellement. Comportement par défaut : refuser avec un message d'erreur et suggérer `--force`. Pas de merge 3-way en v1.
 
-### FR7 — Commande `agents-sync validate`
+### FR7 — Commande `shenron validate`
 
 Valide le fichier pivot contre le schéma. Vérifie :
 
@@ -153,9 +153,9 @@ Valide le fichier pivot contre le schéma. Vérifie :
 - Les `promptFile` pointent vers des fichiers existants
 - Les `skills` référencent des noms kebab-case valides (regex `^[a-z][a-z0-9-]*$`). Leur absence sur disque produit au plus un warning, car un pivot partagé peut référencer des skills non locales.
 
-### FR8 — Commande `agents-sync init`
+### FR8 — Commande `shenron init`
 
-Génère un fichier `agentsync.yaml` squelette pré-rempli à partir des agents déjà présents dans le premier adaptateur installé trouvé (ordre : OpenCode, puis Claude Code, puis Codex). Objectif : bootstrapper rapidement à partir d'une config existante sans importer TOUT le format natif.
+Génère un fichier `shenron.yaml` squelette pré-rempli à partir des agents déjà présents dans le premier adaptateur installé trouvé (ordre : OpenCode, puis Claude Code, puis Codex). Objectif : bootstrapper rapidement à partir d'une config existante sans importer TOUT le format natif.
 
 ### FR9 — Découverte des adaptateurs
 
@@ -230,7 +230,7 @@ Chaque adaptateur reçoit la même `AgentDefinition` / `CommandDefinition` norma
 
 ```
 cmd/
-  agents-sync/
+  shenron/
     main.go              # Point d'entrée, construction du CLI Cobra
 
 internal/
@@ -256,14 +256,14 @@ internal/
 
   cli/
     root.go              # Commande racine
-    diff.go              # agents-sync diff
-    push.go              # agents-sync push
-    validate.go          # agents-sync validate
-    init.go              # agents-sync init
+    diff.go              # shenron diff
+    push.go              # shenron push
+    validate.go          # shenron validate
+    init.go              # shenron init
 
   diff/
     differ.go            # Logique de diff unifié + détection de modifications manuelles
-    state.go             # Fichier d'état (.agentsync-state.json) pour tracker la dernière sortie connue
+    state.go             # Fichier d'état (.shenron-state.json) pour tracker la dernière sortie connue
 
   fsutil/
     paths.go             # Résolution de chemins : ~/.claude/, ~/.config/opencode/, ~/.codex/
@@ -273,7 +273,7 @@ internal/
 ## Data flow
 
 ```
-agentsync.yaml  ──[parser]──►  []AgentDefinition  ──[adapter.GenerateAgent]──►  map[path]content
+shenron.yaml  ──[parser]──►  []AgentDefinition  ──[adapter.GenerateAgent]──►  map[path]content
                                []CommandDefinition ──[adapter.GenerateCommand]──►  map[path]content
                                                                                       │
                                                     ┌─────────────────────────────────┘
@@ -312,7 +312,7 @@ agentsync.yaml  ──[parser]──►  []AgentDefinition  ──[adapter.Gener
 
 ### Tests unitaires
 
-- **Parser YAML** : parse un `agentsync.yaml` valide et vérifie les structs résultantes
+- **Parser YAML** : parse un `shenron.yaml` valide et vérifie les structs résultantes
 - **Parser YAML** : erreurs de validation (champ obligatoire manquant, type incorrect, regex invalide sur `id`, `promptFile` introuvable)
 - **Parser YAML** : références croisées (`commands[].agent` pointe vers un agent inexistant → erreur)
 - **Permissions** : mapping des patterns glob de permission vers le format natif
@@ -326,7 +326,7 @@ agentsync.yaml  ──[parser]──►  []AgentDefinition  ──[adapter.Gener
 - **Push end-to-end OpenCode** : le fichier de sortie `opencode.json` est du JSON valide, parsable, et préserve les champs hors-scope (permissions globales, model par défaut, etc.)
 - **Push end-to-end Claude Code** : les fichiers `agents/*.md` produits ont un frontmatter YAML syntaxiquement valide et respectent la spec Claude Code
 - **Diff** : modification du pivot → `diff` montre le changement sans erreur
-- **État** : un `.agentsync-state.json` est produit après un push réussi, et un push suivant détecte les modifications manuelles si le fichier a changé sans passer par l'outil
+- **État** : un `.shenron-state.json` est produit après un push réussi, et un push suivant détecte les modifications manuelles si le fichier a changé sans passer par l'outil
 
 ### Golden files
 
@@ -342,12 +342,12 @@ Les configurations existantes de l'utilisateur servent de golden files pour les 
 internal/pivot/parser_test.go
 internal/adapter/opencode/adapter_test.go
 internal/adapter/opencode/testdata/
-    agentsync.yaml
+    shenron.yaml
     expected_opencode.json
     expected_prompts_build.md
 internal/adapter/claude/adapter_test.go
 internal/adapter/claude/testdata/
-    agentsync.yaml
+    shenron.yaml
     expected_agents_build.md
     expected_commands_ship.md
 internal/diff/differ_test.go
@@ -359,31 +359,31 @@ Les questions ouvertes de conception ont été résolues avant la v1.
 
 | ID | Décision | FR |
 |---|---|---|
-| D1 | `promptFile` est relatif au répertoire contenant le fichier pivot. Exemple : si le pivot est dans `~/projets/repo/agentsync.yaml` et `promptFile: prompts/build.md`, le chemin résolu est `~/projets/repo/prompts/build.md`. | FR2 |
+| D1 | `promptFile` est relatif au répertoire contenant le fichier pivot. Exemple : si le pivot est dans `~/projets/repo/shenron.yaml` et `promptFile: prompts/build.md`, le chemin résolu est `~/projets/repo/prompts/build.md`. | FR2 |
 | D2 | Le pivot définit les permissions au niveau le plus fin (tool par tool, pattern bash). Les adaptateurs dégradent vers leur modèle natif avec le moins de perte possible. La granularité fine OpenCode (`glob`/`grep`/`list`/`lsp`) passe par `extensions.opencode.permission`. | FR3 |
 | D3 | Conflit : refuser le push avec message d'erreur, suggérer `--force`. Pas de merge 3-way en v1. | FR6 |
-| D4 | Fichier d'état `.agentsync-state.json` stocké dans le même répertoire que le fichier pivot. Git-ignorable. | FR5, FR6 |
+| D4 | Fichier d'état `.shenron-state.json` stocké dans le même répertoire que le fichier pivot. Git-ignorable. | FR5, FR6 |
 | D5 | Skills référencés en lecture seule dans le pivot (`skills: [{name}]`), non gérés. Les skills sont déjà standardisés via `agentskills.io` dans tous les CLI cibles. | Non-goals, FR1 |
-| D6 | Walk-up CWD→root + fallback `$HOME/.agentsync/agentsync.yaml`. Les deux modes (projet et global) coexistent. | FR1 |
+| D6 | Walk-up CWD→root + fallback `$HOME/.shenron/shenron.yaml`. Les deux modes (projet et global) coexistent. | FR1 |
 | D7 | Adaptateur pur + méthode `MergeFile` optionnelle dans l'interface `Adapter`. L'adaptateur OpenCode renvoie les fragments JSON pour les blocs `agent`/`command` ; le cœur fait le merge en préservant les champs hors-scope et l'indentation. | FR10 |
-| D8 | Nom du binaire : `agents-sync`. Distribution : binaire statique macOS/Linux via GitHub Releases + script `curl\|sh`. Pas de package npm/pip/brew en v1. | Stack |
+| D8 | Nom du binaire : `shenron`. Distribution : binaire statique macOS/Linux via GitHub Releases + script `curl\|sh`. Pas de package npm/pip/brew en v1. | Stack |
 | D9 | Le binding skills-par-agent est désormais dans le scope v1 (amend FR2). D5 reste inchangé pour le contenu des skills, qui demeure read-only. Les adaptateurs émettent `skills` comme metadata, pas comme contenu. L'existence locale d'une skill n'est pas bloquante. | FR2, FR7, FR10 |
 
 ## Acceptance criteria (v1)
 
 Une session de test valide le scénario suivant :
 
-1. `agents-sync init` → génère un `agentsync.yaml` à partir de la config OpenCode existante, avec 7 agents et 1+ commandes.
+1. `shenron init` → génère un `shenron.yaml` à partir de la config OpenCode existante, avec 7 agents et 1+ commandes.
 2. L'utilisateur édite le fichier : change le `systemPrompt` de l'agent `build`.
-3. `agents-sync diff --target opencode` → montre que `opencode.json` et `prompts/build.md` vont être modifiés.
-4. `agents-sync push --target opencode` → écrit les fichiers. Aucun autre champ de `opencode.json` n'est altéré.
-5. `agents-sync diff --target opencode` → "No changes" (l'état est synchronisé).
+3. `shenron diff --target opencode` → montre que `opencode.json` et `prompts/build.md` vont être modifiés.
+4. `shenron push --target opencode` → écrit les fichiers. Aucun autre champ de `opencode.json` n'est altéré.
+5. `shenron diff --target opencode` → "No changes" (l'état est synchronisé).
 6. L'utilisateur modifie `prompts/build.md` manuellement.
-7. `agents-sync diff --target opencode` → détecte la modification manuelle, affiche un avertissement.
-8. `agents-sync push --target opencode` → refuse d'écraser (sauf `--force`).
-9. `agents-sync push --target claude-code` → écrit `~/.claude/agents/build.md` à partir du même pivot, avec le frontmatter YAML Claude Code.
+7. `shenron diff --target opencode` → détecte la modification manuelle, affiche un avertissement.
+8. `shenron push --target opencode` → refuse d'écraser (sauf `--force`).
+9. `shenron push --target claude-code` → écrit `~/.claude/agents/build.md` à partir du même pivot, avec le frontmatter YAML Claude Code.
 10. Les permissions mappées (`edit: ask`, `bash` avec patterns) apparaissent correctement dans les deux fichiers natifs.
-11. `agents-sync push` round-trip un champ `skills: [foo]` modifié : il est visible dans `opencode.json` et `~/.claude/agents/<id>.md` après le push.
+11. `shenron push` round-trip un champ `skills: [foo]` modifié : il est visible dans `opencode.json` et `~/.claude/agents/<id>.md` après le push.
 
 ## Stack
 
@@ -393,13 +393,13 @@ Une session de test valide le scénario suivant :
 - **TOML** (Codex adapter v2) : `github.com/pelletier/go-toml/v2`
 - **Markdown frontmatter** : `github.com/adrg/frontmatter`
 - **Tests** : `testing` standard + golden files
-- **Build** : `go build -o agents-sync ./cmd/agents-sync/`
+- **Build** : `go build -o shenron ./cmd/shenron/`
 - **Lint** : `golangci-lint run`
 
 ## Repo layout (rappel)
 
 ```
-cmd/agents-sync/main.go
+cmd/shenron/main.go
 internal/
   pivot/schema.go, parser.go, discover.go
   adapter/adapter.go
@@ -409,5 +409,5 @@ internal/
   cli/{root,diff,push,validate,init}.go
   diff/{differ,state}.go
   fsutil/{paths,write}.go
-docs/prd/agentsync.md                          # ce document
+docs/prd/shenron.md                          # ce document
 ```

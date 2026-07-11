@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jnuel/agentsync/internal/fsutil"
-	"github.com/jnuel/agentsync/internal/pivot"
+	"github.com/S1933/Shenron/internal/fsutil"
+	"github.com/S1933/Shenron/internal/pivot"
 )
 
 // GenerateCommand produces a Claude Code command Markdown file.

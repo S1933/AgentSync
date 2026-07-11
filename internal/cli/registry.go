@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"github.com/jnuel/agentsync/internal/adapter"
-	"github.com/jnuel/agentsync/internal/adapter/claude"
-	"github.com/jnuel/agentsync/internal/adapter/opencode"
+	"github.com/S1933/Shenron/internal/adapter"
+	"github.com/S1933/Shenron/internal/adapter/claude"
+	"github.com/S1933/Shenron/internal/adapter/opencode"
 )
 
 // Registry returns all available adapters keyed by name.

@@ -1,7 +1,7 @@
 .PHONY: build test lint clean
 
 build:
-	go build -o agents-sync ./cmd/agents-sync/
+	go build -o shenron ./cmd/shenron/
 
 test:
 	go test ./...
@@ -10,4 +10,4 @@ lint:
 	golangci-lint run
 
 clean:
-	rm -f agents-sync
+	rm -f shenron

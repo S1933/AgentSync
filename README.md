@@ -1,10 +1,10 @@
-# AgentSync
+# Shenron
 
-AgentSync keeps agent configurations aligned across AI coding assistants from
+Shenron keeps agent configurations aligned across AI coding assistants from
 one CLI-agnostic source of truth.
 
 Define agents, prompts, slash commands, permissions, and per-agent skill
-bindings once in `agentsync.yaml`. AgentSync validates that pivot, previews the
+bindings once in `shenron.yaml`. Shenron validates that pivot, previews the
 native changes, then writes the corresponding Claude Code and OpenCode files.
 
 ## What it supports
@@ -18,47 +18,47 @@ native changes, then writes the corresponding Claude Code and OpenCode files.
 | Per-agent skills | YAML frontmatter `skills` | Native JSON `skills` array |
 | Bootstrap with `init` | Imported when OpenCode is unavailable | Preferred import source |
 
-AgentSync currently targets Claude Code and OpenCode. The adapter boundary is
+Shenron currently targets Claude Code and OpenCode. The adapter boundary is
 designed for adding more targets, but no Codex adapter is included yet.
 
 ## Install
 
-AgentSync requires Go 1.24 or newer.
+Shenron requires Go 1.24 or newer.
 
 ```bash
-git clone git@github.com:S1933/AgentSync.git
-cd AgentSync
+git clone git@github.com:S1933/Shenron.git
+cd Shenron
 make build
 ```
 
-This produces `./agents-sync`. You can also build it directly:
+This produces `./shenron`. You can also build it directly:
 
 ```bash
-go build -o agents-sync ./cmd/agents-sync
+go build -o shenron ./cmd/shenron
 ```
 
 ## Quick start
 
 ```bash
-# Import the first available native configuration into ./agentsync.yaml.
+# Import the first available native configuration into ./shenron.yaml.
 # OpenCode is tried first, then Claude Code.
-./agents-sync init
+./shenron init
 
 # Edit the pivot and validate it.
-./agents-sync validate
+./shenron validate
 
 # Preview all native changes without writing.
-./agents-sync diff
+./shenron diff
 
 # Push to every supported target.
-./agents-sync push
+./shenron push
 ```
 
 To work with one target only:
 
 ```bash
-./agents-sync diff --target opencode
-./agents-sync push --target claude-code
+./shenron diff --target opencode
+./shenron push --target claude-code
 ```
 
 After a successful push, running `diff` again reports `No changes` for each
@@ -68,10 +68,10 @@ synchronized target.
 
 | Command | Behavior |
 |---|---|
-| `init` | Creates `./agentsync.yaml` from the first usable native config. Refuses to overwrite an existing pivot. |
+| `init` | Creates `./shenron.yaml` from the first usable native config. Refuses to overwrite an existing pivot. |
 | `validate` | Parses the pivot and checks schema rules, identifiers, permissions, references, and prompt files. |
 | `diff` | Shows created, modified, manually modified, and orphaned native files without writing. |
-| `push` | Generates and atomically writes native files, then updates `.agentsync-state.json`. |
+| `push` | Generates and atomically writes native files, then updates `.shenron-state.json`. |
 
 Common flags:
 
@@ -81,9 +81,9 @@ Common flags:
 - `push --dry-run` is equivalent to `diff`.
 - `push --force` overwrites native files that changed after the last push.
 
-Without `--config`, AgentSync searches for `agentsync.yaml` from the current
+Without `--config`, Shenron searches for `shenron.yaml` from the current
 directory upward to the filesystem root. If none is found, it tries
-`~/.agentsync/agentsync.yaml`.
+`~/.shenron/shenron.yaml`.
 
 ## Pivot file
 
@@ -142,7 +142,7 @@ commands:
     model: sonnet
 
 # Optional global skill references retained by the pivot schema.
-# AgentSync does not install, copy, or emit their content.
+# Shenron does not install, copy, or emit their content.
 skills:
   - name: test-driven-development
 ```
@@ -167,7 +167,7 @@ These two fields have different purposes:
 
 - `agents[].skills` binds skills to an agent. It round-trips through OpenCode's
   JSON `skills` array and Claude Code's frontmatter `skills` list.
-- Top-level `skills: [{name: ...}]` stores global references only. AgentSync
+- Top-level `skills: [{name: ...}]` stores global references only. Shenron
   does not manage skill contents or install skills on another machine.
 
 The repository's current dogfood bindings are documented in
@@ -205,7 +205,7 @@ sub-permissions individually.
 
 ## Bootstrap and round-trip behavior
 
-`agents-sync init` writes a new pivot in the current directory:
+`shenron init` writes a new pivot in the current directory:
 
 1. It tries `~/.config/opencode/opencode.json`.
 2. If OpenCode is missing or unusable, it tries `~/.claude/agents` and
@@ -223,12 +223,12 @@ The sync pipeline is:
 1. Discover, parse, and validate the pivot.
 2. Generate each target's files in memory.
 3. Merge OpenCode agent and command fragments into the existing JSON.
-4. Compare generated content with disk and `.agentsync-state.json`.
+4. Compare generated content with disk and `.shenron-state.json`.
 5. Write changed files atomically and record their hashes.
 
 ### OpenCode merge policy
 
-AgentSync upserts pivot agents and commands into the nested `agent` and
+Shenron upserts pivot agents and commands into the nested `agent` and
 `command` objects. Native-only entries and unrelated top-level fields are
 preserved, and existing key order is retained where possible. The JSON document
 is parsed and serialized again, so byte-for-byte formatting is not guaranteed.
@@ -236,13 +236,13 @@ is parsed and serialized again, so byte-for-byte formatting is not guaranteed.
 The merge is deliberately upsert-only. Removing an agent or command from the
 pivot does not delete its nested OpenCode entry; remove stale JSON entries by
 hand. Standalone managed files that are no longer generated can be reported as
-orphaned, but AgentSync still leaves deletion to you.
+orphaned, but Shenron still leaves deletion to you.
 
 ### Manual-edit protection
 
-`.agentsync-state.json`, stored beside the pivot, records the hash of every file
+`.shenron-state.json`, stored beside the pivot, records the hash of every file
 written by a successful push. If a managed native file later differs from both
-that state and the newly generated output, AgentSync marks it as manually
+that state and the newly generated output, Shenron marks it as manually
 modified and refuses to overwrite it. Review the diff, reconcile the change, or
 use `push --force` deliberately.
 
@@ -253,7 +253,7 @@ use `push --force` deliberately.
   initialization.
 - Native entries removed from the pivot are warned about, not deleted.
 - Skill bindings are metadata only; skill directories and `SKILL.md` contents
-  are outside AgentSync's management scope.
+  are outside Shenron's management scope.
 - Skill-name validation checks kebab-case syntax, not local filesystem
   availability.
 - OpenCode JSON is structurally preserved, not guaranteed byte-identical.
@@ -261,7 +261,7 @@ use `push --force` deliberately.
 ## Architecture for contributors
 
 ```text
-cmd/agents-sync/       Cobra entry point
+cmd/shenron/       Cobra entry point
 internal/
   cli/                 init, validate, diff, push, registry, orchestration
   pivot/               YAML schema, discovery, parsing, validation
@@ -303,7 +303,7 @@ To add a target:
 ```bash
 make test      # go test ./...
 make lint      # golangci-lint run
-make build     # go build -o agents-sync ./cmd/agents-sync
+make build     # go build -o shenron ./cmd/shenron
 make clean     # remove the local binary
 ```
 
@@ -316,8 +316,8 @@ The test suite contains:
 - atomic-write and state-file tests;
 - end-to-end round-trip tests for both targets, including per-agent skills.
 
-The root `agentsync.yaml`, generated `agents-sync` binary, and
-`.agentsync-state.json` are local dogfood artifacts and are gitignored.
+The root `shenron.yaml`, generated `shenron` binary, and
+`.shenron-state.json` are local dogfood artifacts and are gitignored.
 
 For the detailed product contract, see
-[`docs/prd/agentsync.md`](docs/prd/agentsync.md).
+[`docs/prd/shenron.md`](docs/prd/shenron.md).

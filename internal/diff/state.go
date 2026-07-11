@@ -8,16 +8,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jnuel/agentsync/internal/fsutil"
+	"github.com/S1933/Shenron/internal/fsutil"
 )
 
-const stateFileName = ".agentsync-state.json"
+const stateFileName = ".shenron-state.json"
 const stateVersion = "1"
 
 // FileState records the hash of content written by the last successful push.
 // Managed lists, per nested container (e.g. "agent"/"command"), the leaf keys
-// agentsync wrote into a merged config file. It lets a later push prune entries
-// that left the pivot without touching native entries agentsync never owned.
+// shenron wrote into a merged config file. It lets a later push prune entries
+// that left the pivot without touching native entries shenron never owned.
 type FileState struct {
 	Hash    string              `json:"hash"`
 	Path    string              `json:"path"`
