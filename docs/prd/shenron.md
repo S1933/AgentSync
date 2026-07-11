@@ -123,6 +123,11 @@ Chaque commande dans le pivot :
 
 ### FR5 — Commande `shenron diff`
 
+> **Remplacé par D10 — voir `docs/prd/scope-flatten-commands.md` (FR4).**
+> La commande `shenron diff` opère désormais sur un package installé via
+> `shenron diff <name>`. Le format de sortie et la sémantique
+> created/modified/manually-modified/orphaned sont conservés.
+
 Affiche un résumé des différences entre le fichier pivot et la configuration native existante dans le(s) CLI cible(s) :
 
 - Fichiers qui seraient créés
@@ -136,6 +141,12 @@ La détection des modifications manuelles s'appuie sur un fichier d'état `.shen
 
 ### FR6 — Commande `shenron push`
 
+> **Remplacé par D10 — voir `docs/prd/scope-flatten-commands.md` (FR5).**
+> La commande `shenron push` opère désormais sur un package installé via
+> `shenron push <name>`. Les options `--target`, `--force` et
+> `--allow-permissions` sont conservées ; `--dry-run` n'existe pas (utiliser
+> `shenron diff <name>` à la place).
+
 Lit le fichier pivot, génère la configuration native pour le(s) CLI cible(s), et écrit les fichiers. Options :
 
 - `--target <name>` : limite à un seul CLI cible (ex. `opencode`, `claude-code`). Si absent, tous les adaptateurs disponibles sont exécutés.
@@ -143,6 +154,11 @@ Lit le fichier pivot, génère la configuration native pour le(s) CLI cible(s), 
 - `--force` : écrase les fichiers natifs même s'ils ont été modifiés manuellement. Comportement par défaut : refuser avec un message d'erreur et suggérer `--force`. Pas de merge 3-way en v1.
 
 ### FR7 — Commande `shenron validate`
+
+> **Retiré par D10 — voir `docs/prd/scope-flatten-commands.md` (non-goal
+> « Re-introducing `validate` »).** La validation reste exécutée
+> implicitement par `shenron install`, `shenron update` et `shenron push`.
+> Aucune commande `shenron validate` n'est exposée.
 
 Valide le fichier pivot contre le schéma. Vérifie :
 
@@ -154,6 +170,12 @@ Valide le fichier pivot contre le schéma. Vérifie :
 - Les `skills` référencent des noms kebab-case valides (regex `^[a-z][a-z0-9-]*$`). Leur absence sur disque produit au plus un warning, car un pivot partagé peut référencer des skills non locales.
 
 ### FR8 — Commande `shenron init`
+
+> **Retiré par D10 — voir `docs/prd/scope-flatten-commands.md` (non-goal
+> « Re-introducing `init` »).** L'amorçage se fait en écrivant un
+> `shenron-package.yaml` et un `shenron.yaml` à la main, puis en exécutant
+> `shenron install ./mon-package`. Aucune commande d'import automatique
+> n'est exposée.
 
 Génère un fichier `shenron.yaml` squelette pré-rempli à partir des agents déjà présents dans le premier adaptateur installé trouvé (ordre : OpenCode, puis Claude Code, puis Codex). Objectif : bootstrapper rapidement à partir d'une config existante sans importer TOUT le format natif.
 
@@ -368,8 +390,16 @@ Les questions ouvertes de conception ont été résolues avant la v1.
 | D7 | Adaptateur pur + méthode `MergeFile` optionnelle dans l'interface `Adapter`. L'adaptateur OpenCode renvoie les fragments JSON pour les blocs `agent`/`command` ; le cœur fait le merge en préservant les champs hors-scope et l'indentation. | FR10 |
 | D8 | Nom du binaire : `shenron`. Distribution : binaire statique macOS/Linux via GitHub Releases + script `curl\|sh`. Pas de package npm/pip/brew en v1. | Stack |
 | D9 | Le binding skills-par-agent est désormais dans le scope v1 (amend FR2). D5 reste inchangé pour le contenu des skills, qui demeure read-only. Les adaptateurs émettent `skills` comme metadata, pas comme contenu. L'existence locale d'une skill n'est pas bloquante. | FR2, FR7, FR10 |
+| D10 | Le flux single-pivot de la v1 (`init` / `validate` / `diff` / `push` sur un `shenron.yaml` nu) a été retiré au profit du flux par package. Le contrat CLI actuel vit dans `docs/prd/scope-flatten-commands.md` : cinq commandes top-level (`install`, `list`, `update`, `diff`, `push`), `init` et `validate` supprimés, `--store` promu au niveau racine. FR1-FR4 (schéma pivot) restent valides ; FR5-FR8 sont remplacés par les FR1-FR7 du nouveau PRD. | FR5, FR6, FR7, FR8 |
 
 ## Acceptance criteria (v1)
+
+> **Les critères 1-12 ci-dessous décrivent le flux single-pivot de la v1
+> (commande `init` + `diff`/`push` sur un `shenron.yaml` nu), qui a été
+> remplacé par le flux par package (D10).** Les critères d'acceptation
+> du contrat actuel sont dans `docs/prd/scope-flatten-commands.md`. Les
+> scénarios restent informatifs pour valider l'engine, mais les
+> commandes exactes ont changé.
 
 Une session de test valide le scénario suivant :
 
