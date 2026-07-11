@@ -71,6 +71,11 @@ synchronized target.
 | `validate` | Parses the pivot and checks schema rules, identifiers, permissions, references, and prompt files. |
 | `diff` | Shows created, modified, manually modified, and orphaned native files without writing. |
 | `push` | Generates and atomically writes native files, then updates `.shenron-state.json`. |
+| `package install <source>` | Install a local directory or a public HTTPS Git package. |
+| `package list` | List installed packages, ordered by name. |
+| `package update <name>` | Validate and replace an installed snapshot from a new source or ref. |
+| `package diff <name>` | Show a package's native diff plus its permission grants and missing skills. |
+| `package push <name>` | Generate and atomically write a package's native files, then update its state. |
 
 Common flags:
 
@@ -79,6 +84,12 @@ Common flags:
   `codex`, or `opencode`.
 - `push --dry-run` is equivalent to `diff`.
 - `push --force` overwrites native files that changed after the last push.
+- `package --store <path>` selects a custom package cache directory (default
+  `~/.shenron/packages`).
+- `package install --ref <tag-or-sha>` pins the Git revision for HTTPS sources.
+- `package push --allow-permissions` approves the package revision's declared
+  permission grants; the approval is bound to the installed revision and its
+  permission digest.
 
 Without `--config`, Shenron searches for `shenron.yaml` from the current
 directory upward to the filesystem root. If none is found, it tries
@@ -230,6 +241,77 @@ instruction hint; Shenron does not resolve local skill paths or install skills.
 Bootstrap is intentionally selective. Native fields without a pivot equivalent
 are ignored, except for supported values preserved under `extensions`.
 
+## Configuration packages
+
+A package bundles a pivot together with a manifest and ships as a
+self-contained directory. Use packages when the same configuration should be
+reliably installed on many machines or released to other users.
+
+A package directory looks like this:
+
+```text
+my-package/
+├── shenron-package.yaml   # manifest: name, version, description, skills
+└── shenron.yaml           # pivot: agents, commands, permissions
+```
+
+`shenron-package.yaml` validates `schemaVersion: "1"`, a kebab-case `name`
+matching `^[a-z][a-z0-9-]*$`, a strict semver `version`, a non-empty
+`description`, and the `skills.required` / `skills.optional` arrays. Every
+`promptFile` referenced by the pivot must stay inside the package directory.
+
+### Install a package
+
+```bash
+# Local directory
+./shenron package install ./my-package
+
+# Public Git repository (HTTPS only, immutable tag or full commit SHA)
+./shenron package install https://github.com/acme/reviewers.git --ref 1.2.0
+```
+
+The first install copies the source into a content-addressed snapshot under
+`~/.shenron/packages/<name>/<digest>/`. Each subsequent `install` from Git
+requires `--ref`; branches and `HEAD` are refused. The snapshot's digest is
+revalidated before every load, so a corrupted cache can never be pushed.
+
+### List and update
+
+```bash
+./shenron package list                       # name, version, source, revision
+./shenron package update acme-reviewers \
+    --source https://github.com/acme/reviewers.git --ref 1.3.0
+```
+
+`update` stages and validates the new snapshot before swapping the active
+record. Old snapshots are retained.
+
+### Diff and push
+
+```bash
+./shenron package diff acme-reviewers                # preview without writing
+./shenron package push acme-reviewers --allow-permissions
+```
+
+`package diff` reports the same created / modified / manually-modified /
+orphaned status as `diff`, and additionally surfaces the package's declared
+permission grants plus any required or optional skills missing on disk.
+
+`package push` requires explicit approval the first time a revision declares
+permission grants. The approval is bound to both the package revision and the
+SHA-256 digest of the normalized grant list (`state/<name>/permissions.json`),
+so a new revision with changed grants must be approved again. Missing required
+skills abort the push; missing optional skills emit a warning and continue.
+
+Packages also refuse to take over native resources they do not already own.
+If a generated path (or a managed nested entry inside `opencode.json`) exists
+on disk without being tracked in the package's own state file, `package push`
+returns `ErrPackageCollision` and aborts. `package push --force` overwrites
+manually edited package-owned files.
+
+State for a package lives at `~/.shenron/state/<name>/.shenron-state.json`,
+kept outside the immutable snapshot so it survives revisions.
+
 ## Synchronization and safety
 
 The sync pipeline is:
@@ -270,14 +352,18 @@ use `push --force` deliberately.
 - Skill-name validation checks kebab-case syntax, not local filesystem
   availability.
 - OpenCode JSON is structurally preserved, not guaranteed byte-identical.
+- Package installs accept only local directories or public HTTPS Git
+  repositories, and HTTPS sources require an immutable tag or full commit
+  SHA. Branches, `HEAD`, SSH, and archive URLs are refused.
 
 ## Architecture for contributors
 
 ```text
 cmd/shenron/       Cobra entry point
 internal/
-  cli/                 init, validate, diff, push, registry, orchestration
+  cli/                 init, validate, diff, push, package subcommands, registry, orchestration
   pivot/               YAML schema, discovery, parsing, validation
+  package/             shenron-package.yaml manifest, immutable snapshots, Git and local install
   adapter/
     claude/            Markdown/frontmatter and command-file generation
     codex/             TOML custom-agent and Markdown custom-prompt generation
@@ -327,6 +413,8 @@ The test suite contains:
 - adapter mapping and golden-file tests;
 - ordered OpenCode merge and preservation tests;
 - CLI bootstrap, diff, push, force, and orphan-scope tests;
+- package install, list, update, diff, push, permissions, skills, and
+  foreign-collision tests;
 - atomic-write and state-file tests;
 - end-to-end round-trip tests for all three targets, including per-agent skills.
 
