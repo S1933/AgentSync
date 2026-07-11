@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadDirectoryAcceptsValidPackage(t *testing.T) {
@@ -122,8 +123,74 @@ agents:
 	}
 
 	_, err := LoadDirectory(root)
-	if err == nil || !strings.Contains(err.Error(), "escapes package root") {
-		t.Fatalf("LoadDirectory() error = %v, want symlink containment error", err)
+	if err == nil || !strings.Contains(err.Error(), "symlinks are not supported") {
+		t.Fatalf("LoadDirectory() error = %v, want symlink rejection", err)
+	}
+}
+
+func TestLoadDirectoryRejectsContainedSymlinks(t *testing.T) {
+	tests := []struct {
+		name           string
+		linkPath       string
+		target         string
+		absoluteTarget bool
+	}{
+		{name: "manifest", linkPath: ManifestFileName, target: "manifest-source.yaml"},
+		{name: "pivot", linkPath: PivotFileName, target: "pivot-source.yaml", absoluteTarget: true},
+		{name: "prompt", linkPath: "prompts/review.md", target: "review-source.md"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := writePackage(t, validManifest(), validPivot())
+			link := filepath.Join(root, tt.linkPath)
+			target := filepath.Join(filepath.Dir(link), tt.target)
+			if tt.linkPath == ManifestFileName || tt.linkPath == PivotFileName {
+				target = filepath.Join(root, tt.target)
+			}
+			contents, err := os.ReadFile(link)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, target, string(contents))
+			if err := os.Remove(link); err != nil {
+				t.Fatal(err)
+			}
+			linkTarget := tt.target
+			if tt.absoluteTarget {
+				linkTarget = target
+			}
+			if err := os.Symlink(linkTarget, link); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+
+			_, err = LoadDirectory(root)
+			if err == nil || !strings.Contains(err.Error(), "symlinks are not supported") {
+				t.Fatalf("LoadDirectory() error = %v, want symlink rejection", err)
+			}
+		})
+	}
+}
+
+func TestStoreInstallLocalRejectsContainedSymlink(t *testing.T) {
+	source := writePackage(t, validManifest(), validPivot())
+	prompt := filepath.Join(source, "prompts", "review.md")
+	target := filepath.Join(source, "prompts", "review-source.md")
+	contents, err := os.ReadFile(prompt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, target, string(contents))
+	if err := os.Remove(prompt); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("review-source.md", prompt); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err = NewStore(filepath.Join(t.TempDir(), "cache")).InstallLocal(source)
+	if err == nil || !strings.Contains(err.Error(), "symlinks are not supported") {
+		t.Fatalf("InstallLocal() error = %v, want symlink rejection", err)
 	}
 }
 
@@ -148,6 +215,101 @@ agents: []
 	got, err := os.ReadFile(filepath.Join(installed.Root, PivotFileName))
 	if err != nil || string(got) != validPivot() {
 		t.Fatalf("snapshot changed with source: %q, %v", got, err)
+	}
+}
+
+func TestStoreInstallLocalValidatesExistingSnapshotBeforeIndexing(t *testing.T) {
+	source := writePackage(t, validManifest(), validPivot())
+	store := NewStore(filepath.Join(t.TempDir(), "cache"))
+	pkg, err := LoadDirectory(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := directoryDigest(pkg.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stagedRoot := filepath.Join(store.root, "packages", pkg.Manifest.Name, digest)
+	writeFile(t, filepath.Join(stagedRoot, ManifestFileName), validManifest())
+	writeFile(t, filepath.Join(stagedRoot, PivotFileName), validPivot())
+	prompt := filepath.Join(stagedRoot, "prompts", "review.md")
+	writeFile(t, prompt, "Review this change.")
+	if err := os.Remove(prompt); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("review-source.md", prompt); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	writeFile(t, filepath.Join(stagedRoot, "prompts", "review-source.md"), "Review this change.")
+
+	_, err = store.InstallLocal(source)
+	if err == nil || !strings.Contains(err.Error(), "symlinks are not supported") {
+		t.Fatalf("InstallLocal() error = %v, want staged snapshot validation failure", err)
+	}
+	installed, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(installed) != 0 {
+		t.Fatalf("List() = %+v, want no indexed packages", installed)
+	}
+}
+
+func TestStoreInstallLocalWaitsForIndexLock(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "cache"))
+	unlock, err := store.lockIndex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+
+	result := make(chan error, 1)
+	go func() {
+		_, err := store.InstallLocal(writePackage(t, validManifest(), validPivot()))
+		result <- err
+	}()
+
+	select {
+	case err := <-result:
+		t.Fatalf("InstallLocal() completed while index lock held: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	unlock = func() error { return nil }
+	if err := <-result; err != nil {
+		t.Fatalf("InstallLocal() after unlocking = %v", err)
+	}
+}
+
+func TestParseManifestValidatesPrereleaseNumericIdentifiers(t *testing.T) {
+	tests := []struct {
+		version string
+		valid   bool
+	}{
+		{version: "1.2.3-01", valid: false},
+		{version: "1.2.3-01a", valid: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.version, func(t *testing.T) {
+			_, err := ParseManifest([]byte(strings.Replace(validManifest(), "1.2.3", tt.version, 1)))
+			if tt.valid && err != nil {
+				t.Fatalf("ParseManifest() error = %v, want valid semantic version", err)
+			}
+			if !tt.valid && (err == nil || !strings.Contains(err.Error(), "version must be a semantic version")) {
+				t.Fatalf("ParseManifest() error = %v, want semantic version error", err)
+			}
+		})
+	}
+}
+
+func TestParseManifestRejectsSecondDocument(t *testing.T) {
+	_, err := ParseManifest([]byte(validManifest() + "---\nname: ignored\n"))
+	if err == nil || !strings.Contains(err.Error(), "multiple YAML documents") {
+		t.Fatalf("ParseManifest() error = %v, want multiple-document error", err)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/S1933/Shenron/internal/fsutil"
 	"github.com/S1933/Shenron/internal/pivot"
@@ -24,12 +25,13 @@ const (
 	// PivotFileName is the standalone Shenron pivot at the package root.
 	PivotFileName = "shenron.yaml"
 
-	indexFileName = "index.json"
+	indexFileName     = "index.json"
+	indexLockFileName = "index.lock"
 )
 
 var (
 	kebabCase = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-	semver    = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+	semver    = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 )
 
 // Manifest describes a standalone, shareable Shenron configuration package.
@@ -92,6 +94,9 @@ func LoadDirectory(root string) (*Package, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("package root is not a directory: %s", root)
 	}
+	if err := validateNoSymlinks(realRoot); err != nil {
+		return nil, err
+	}
 
 	manifestData, err := os.ReadFile(filepath.Join(realRoot, ManifestFileName))
 	if err != nil {
@@ -126,10 +131,33 @@ func ParseManifest(data []byte) (*Manifest, error) {
 	if err := decoder.Decode(&manifest); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", ManifestFileName, err)
 	}
+	var extra yaml.Node
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", ManifestFileName, err)
+		}
+		return nil, fmt.Errorf("parse %s: multiple YAML documents are not supported", ManifestFileName)
+	}
 	if err := validateManifest(&manifest); err != nil {
 		return nil, err
 	}
 	return &manifest, nil
+}
+
+func validateNoSymlinks(root string) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == root || entry.Type()&os.ModeSymlink == 0 {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("package contains symlink %q; symlinks are not supported", rel)
+	})
 }
 
 func validateManifest(manifest *Manifest) error {
@@ -219,6 +247,11 @@ func (s *Store) InstallLocal(source string) (*InstalledPackage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("hash package: %w", err)
 	}
+	unlock, err := s.lockIndex()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = unlock() }()
 	index, err := s.readIndex()
 	if err != nil {
 		return nil, err
@@ -236,6 +269,9 @@ func (s *Store) InstallLocal(source string) (*InstalledPackage, error) {
 		if err := copySnapshot(pkg.Root, target); err != nil {
 			return nil, err
 		}
+	}
+	if _, err := LoadDirectory(target); err != nil {
+		return nil, fmt.Errorf("validate package snapshot: %w", err)
 	}
 
 	installed := InstalledPackage{
@@ -265,6 +301,31 @@ type packageIndex struct {
 }
 
 func (s *Store) indexPath() string { return filepath.Join(s.root, indexFileName) }
+
+func (s *Store) lockIndex() (func() error, error) {
+	if err := os.MkdirAll(s.root, 0o755); err != nil {
+		return nil, fmt.Errorf("create package cache: %w", err)
+	}
+	file, err := os.OpenFile(filepath.Join(s.root, indexLockFileName), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("open package index lock: %w", err)
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("lock package index: %w", err)
+	}
+	return func() error {
+		unlockErr := syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		closeErr := file.Close()
+		if unlockErr != nil {
+			return fmt.Errorf("unlock package index: %w", unlockErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close package index lock: %w", closeErr)
+		}
+		return nil
+	}, nil
+}
 
 func (s *Store) readIndex() (*packageIndex, error) {
 	data, err := os.ReadFile(s.indexPath())
@@ -389,11 +450,7 @@ func copyDirectory(source, destination string) error {
 			return os.MkdirAll(target, 0o755)
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
-			link, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			return os.Symlink(link, target)
+			return fmt.Errorf("symlinks are not supported in package snapshots: %s", rel)
 		}
 		if !entry.Type().IsRegular() {
 			return fmt.Errorf("unsupported file type: %s", rel)
