@@ -218,6 +218,71 @@ agents: []
 	}
 }
 
+func TestStoreInstallLocalRejectsSourceChangedWhileWaitingForIndexLock(t *testing.T) {
+	source := writePackage(t, validManifest(), validPivot())
+	store := NewStore(filepath.Join(t.TempDir(), "cache"))
+
+	unlock, err := store.lockIndex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := store.InstallLocal(source)
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		t.Fatalf("InstallLocal() completed while index lock held: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	writeFile(t, filepath.Join(source, "prompts", "review.md"), "Mutated after hashing.")
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; err == nil || !strings.Contains(err.Error(), "digest") {
+		t.Fatalf("InstallLocal() error = %v, want snapshot digest mismatch", err)
+	}
+	installed, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(installed) != 0 {
+		t.Fatalf("List() = %+v, want no indexed packages", installed)
+	}
+}
+
+func TestStoreInstallLocalRejectsExistingSnapshotWithDifferentDigest(t *testing.T) {
+	source := writePackage(t, validManifest(), validPivot())
+	store := NewStore(filepath.Join(t.TempDir(), "cache"))
+	pkg, err := LoadDirectory(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := directoryDigest(pkg.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(store.root, "packages", pkg.Manifest.Name, digest)
+	if err := copyDirectory(pkg.Root, target); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(target, "prompts", "review.md"), "Corrupted cached content.")
+
+	_, err = store.InstallLocal(source)
+	if err == nil || !strings.Contains(err.Error(), "digest") {
+		t.Fatalf("InstallLocal() error = %v, want snapshot digest mismatch", err)
+	}
+	installed, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(installed) != 0 {
+		t.Fatalf("List() = %+v, want no indexed packages", installed)
+	}
+}
+
 func TestStoreInstallLocalValidatesExistingSnapshotBeforeIndexing(t *testing.T) {
 	source := writePackage(t, validManifest(), validPivot())
 	store := NewStore(filepath.Join(t.TempDir(), "cache"))

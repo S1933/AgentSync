@@ -266,12 +266,12 @@ func (s *Store) InstallLocal(source string) (*InstalledPackage, error) {
 	if _, err := os.Stat(target); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("stat package snapshot: %w", err)
 	} else if os.IsNotExist(err) {
-		if err := copySnapshot(pkg.Root, target); err != nil {
+		if err := copySnapshot(pkg.Root, target, digest); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := LoadDirectory(target); err != nil {
-		return nil, fmt.Errorf("validate package snapshot: %w", err)
+	if err := validateSnapshotDigest(target, digest); err != nil {
+		return nil, err
 	}
 
 	installed := InstalledPackage{
@@ -409,7 +409,22 @@ func directoryDigest(root string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func copySnapshot(source, target string) (err error) {
+func validateSnapshotDigest(root, expectedDigest string) error {
+	pkg, err := LoadDirectory(root)
+	if err != nil {
+		return fmt.Errorf("validate package snapshot: %w", err)
+	}
+	digest, err := directoryDigest(pkg.Root)
+	if err != nil {
+		return fmt.Errorf("hash package snapshot: %w", err)
+	}
+	if digest != expectedDigest {
+		return fmt.Errorf("package snapshot digest mismatch: got %s, want %s", digest, expectedDigest)
+	}
+	return nil
+}
+
+func copySnapshot(source, target, expectedDigest string) (err error) {
 	parent := filepath.Dir(target)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return fmt.Errorf("create package snapshot parent: %w", err)
@@ -426,6 +441,9 @@ func copySnapshot(source, target string) (err error) {
 	staged := filepath.Join(tmp, "contents")
 	if err = copyDirectory(source, staged); err != nil {
 		return fmt.Errorf("copy package snapshot: %w", err)
+	}
+	if err = validateSnapshotDigest(staged, expectedDigest); err != nil {
+		return err
 	}
 	if err = os.Rename(staged, target); err != nil {
 		return fmt.Errorf("publish package snapshot: %w", err)
