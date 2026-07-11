@@ -52,6 +52,86 @@ func TestParseValidPivotFile(t *testing.T) {
 	}
 }
 
+func TestParseStrictRejectsUnknownPivotFields(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{
+			name: "root",
+			yaml: `version: "1"
+unexpected: value
+agents: []`,
+			want: "field unexpected not found",
+		},
+		{
+			name: "agent",
+			yaml: `version: "1"
+agents:
+  - id: review
+    description: Review code.
+    mode: subagent
+    unexpected: value`,
+			want: "field unexpected not found",
+		},
+		{
+			name: "command",
+			yaml: `version: "1"
+commands:
+  - id: review
+    description: Review code.
+    template: Review $ARGUMENTS
+    unexpected: value`,
+			want: "field unexpected not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseStrict([]byte(tt.yaml), testdataDir(t))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("ParseStrict() error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseStrictPreservesExtensionsAndDoesNotChangeParseCompatibility(t *testing.T) {
+	data := []byte(`version: "1"
+unexpected: allowed-by-legacy-parser
+agents:
+  - id: review
+    description: Review code.
+    mode: subagent
+    extensions:
+      thirdParty:
+        enabled: true
+`)
+
+	if _, err := Parse(data, testdataDir(t)); err != nil {
+		t.Fatalf("Parse() error = %v, want legacy parser compatibility", err)
+	}
+
+	strictData := []byte(`version: "1"
+agents:
+  - id: review
+    description: Review code.
+    mode: subagent
+    extensions:
+      thirdParty:
+        enabled: true
+`)
+	pf, err := ParseStrict(strictData, testdataDir(t))
+	if err != nil {
+		t.Fatalf("ParseStrict() error = %v", err)
+	}
+	thirdParty, ok := pf.Agents[0].Extensions["thirdParty"].(map[string]any)
+	if !ok || thirdParty["enabled"] != true {
+		t.Fatalf("extensions = %#v, want thirdParty.enabled preserved", pf.Agents[0].Extensions)
+	}
+}
+
 func TestParseAgentSkills(t *testing.T) {
 	yaml := `version: "1"
 agents:

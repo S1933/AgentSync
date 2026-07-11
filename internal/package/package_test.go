@@ -78,6 +78,68 @@ unexpected: value
 	}
 }
 
+func TestLoadDirectoryRejectsUnknownPivotFields(t *testing.T) {
+	tests := []struct {
+		name  string
+		pivot string
+	}{
+		{
+			name: "root",
+			pivot: `version: "1"
+unexpected: value
+agents: []`,
+		},
+		{
+			name: "agent",
+			pivot: `version: "1"
+agents:
+  - id: review
+    description: Review code.
+    mode: subagent
+    unexpected: value`,
+		},
+		{
+			name: "command",
+			pivot: `version: "1"
+commands:
+  - id: review
+    description: Review code.
+    template: Review $ARGUMENTS
+    unexpected: value`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := LoadDirectory(writePackage(t, validManifest(), tt.pivot))
+			if err == nil || !strings.Contains(err.Error(), "field unexpected not found") {
+				t.Fatalf("LoadDirectory() error = %v, want unknown-field error", err)
+			}
+		})
+	}
+}
+
+func TestLoadDirectoryAllowsArbitraryExtensions(t *testing.T) {
+	root := writePackage(t, validManifest(), `version: "1"
+agents:
+  - id: review
+    description: Review code.
+    mode: subagent
+    extensions:
+      thirdParty:
+        enabled: true
+`)
+
+	pkg, err := LoadDirectory(root)
+	if err != nil {
+		t.Fatalf("LoadDirectory() error = %v", err)
+	}
+	thirdParty, ok := pkg.Pivot.Agents[0].Extensions["thirdParty"].(map[string]any)
+	if !ok || thirdParty["enabled"] != true {
+		t.Fatalf("extensions = %#v, want thirdParty.enabled preserved", pkg.Pivot.Agents[0].Extensions)
+	}
+}
+
 func TestLoadDirectoryRequiresRootPivot(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, ManifestFileName), validManifest())

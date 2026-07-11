@@ -37,15 +37,32 @@ func Parse(data []byte, pivotDir string) (*PivotFile, error) {
 	if err := yaml.Unmarshal(data, &pf); err != nil {
 		return nil, fmt.Errorf("yaml parse: %w", err)
 	}
+	return validateParsedPivot(&pf, pivotDir)
+}
 
+// ParseStrict parses YAML pivot data with unknown schema fields rejected. It is
+// intended for untrusted, installed configuration packages; Parse remains
+// permissive for backwards compatibility with existing user pivots.
+func ParseStrict(data []byte, pivotDir string) (*PivotFile, error) {
+	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
+	decoder.KnownFields(true)
+
+	var pf PivotFile
+	if err := decoder.Decode(&pf); err != nil {
+		return nil, fmt.Errorf("yaml parse: %w", err)
+	}
+	return validateParsedPivot(&pf, pivotDir)
+}
+
+func validateParsedPivot(pf *PivotFile, pivotDir string) (*PivotFile, error) {
 	var errs []string
-	errs = append(errs, validatePivot(&pf, pivotDir)...)
+	errs = append(errs, validatePivot(pf, pivotDir)...)
 
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("validation failed:\n  - %s", strings.Join(errs, "\n  - "))
 	}
 
-	return &pf, nil
+	return pf, nil
 }
 
 func validatePivot(pf *PivotFile, pivotDir string) []string {

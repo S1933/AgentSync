@@ -100,7 +100,7 @@ func LoadDirectory(root string) (*Package, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", PivotFileName, err)
 	}
-	pf, err := pivot.Parse(pivotData, realRoot)
+	pf, err := pivot.ParseStrict(pivotData, realRoot)
 	if err != nil {
 		return nil, fmt.Errorf("validate %s: %w", PivotFileName, err)
 	}
