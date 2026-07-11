@@ -98,46 +98,76 @@ func RunPackageUpdate(opts PackageUpdateOptions) error {
 	return err
 }
 
-// NewPackageCmd creates the package command group.
-func NewPackageCmd() *cobra.Command {
-	var storeRoot string
-	cmd := &cobra.Command{Use: "package", Short: "Install and manage standalone configuration packages"}
-	cmd.PersistentFlags().StringVar(&storeRoot, "store", "", "package cache directory")
-
-	var installRef string
-	install := &cobra.Command{
-		Use:   "install <source>",
-		Short: "Install a local or public HTTPS Git package",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunPackageInstall(PackageInstallOptions{Store: storeAt(storeRoot), Source: args[0], Ref: installRef, Output: cmd.OutOrStdout()})
-		},
+// NewRootCmd builds the top-level shenron command with the persistent
+// --store flag and the five top-level subcommands. The store flag is
+// read lazily through a resolver so subcommand RunE handlers see the
+// value Cobra parsed for the root.
+func NewRootCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "shenron",
+		Short:        "Install and manage standalone configuration packages",
+		SilenceUsage: true,
 	}
-	install.Flags().StringVar(&installRef, "ref", "", "immutable Git tag or full commit SHA (required for HTTPS sources)")
+	cmd.PersistentFlags().String("store", "", "package cache directory (default ~/.shenron/packages)")
 
-	list := &cobra.Command{
-		Use:   "list",
-		Short: "List installed configuration packages",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunPackageList(PackageListOptions{Store: storeAt(storeRoot), Output: cmd.OutOrStdout()})
-		},
+	resolver := func() *shenronpackage.Store {
+		root, _ := cmd.PersistentFlags().GetString("store")
+		return storeAt(root)
 	}
 
-	var updateSource, updateRef string
-	update := &cobra.Command{
-		Use:   "update <name>",
-		Short: "Validate and replace an installed package snapshot",
-		Args:  cobra.ExactArgs(1),
+	cmd.AddCommand(
+		NewInstallCmd(resolver),
+		NewListCmd(resolver),
+		NewUpdateCmd(resolver),
+		NewDiffCmd(resolver),
+		NewPushCmd(resolver),
+	)
+	return cmd
+}
+
+// NewInstallCmd builds the top-level `install` command.
+func NewInstallCmd(store func() *shenronpackage.Store) *cobra.Command {
+	var ref string
+	cmd := &cobra.Command{
+		Use:          "install <source>",
+		Short:        "Install a local or public HTTPS Git package",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunPackageUpdate(PackageUpdateOptions{Store: storeAt(storeRoot), Name: args[0], Source: updateSource, Ref: updateRef, Output: cmd.OutOrStdout()})
+			return RunPackageInstall(PackageInstallOptions{Store: store(), Source: args[0], Ref: ref, Output: cmd.OutOrStdout()})
 		},
 	}
-	update.Flags().StringVar(&updateSource, "source", "", "replacement local directory or public HTTPS Git source")
-	update.Flags().StringVar(&updateRef, "ref", "", "immutable Git tag or full commit SHA")
+	cmd.Flags().StringVar(&ref, "ref", "", "immutable Git tag or full commit SHA (required for HTTPS sources)")
+	return cmd
+}
 
-	diffCmd, pushCmd := newPackageApplyCmds(&storeRoot)
-	cmd.AddCommand(install, list, update, diffCmd, pushCmd)
+// NewListCmd builds the top-level `list` command.
+func NewListCmd(store func() *shenronpackage.Store) *cobra.Command {
+	return &cobra.Command{
+		Use:          "list",
+		Short:        "List installed configuration packages",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return RunPackageList(PackageListOptions{Store: store(), Output: cmd.OutOrStdout()})
+		},
+	}
+}
+
+// NewUpdateCmd builds the top-level `update` command.
+func NewUpdateCmd(store func() *shenronpackage.Store) *cobra.Command {
+	var source, ref string
+	cmd := &cobra.Command{
+		Use:          "update <name>",
+		Short:        "Validate and replace an installed package snapshot",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return RunPackageUpdate(PackageUpdateOptions{Store: store(), Name: args[0], Source: source, Ref: ref, Output: cmd.OutOrStdout()})
+		},
+	}
+	cmd.Flags().StringVar(&source, "source", "", "replacement local directory or public HTTPS Git source")
+	cmd.Flags().StringVar(&ref, "ref", "", "immutable Git tag or full commit SHA")
 	return cmd
 }
 

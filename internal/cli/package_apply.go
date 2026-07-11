@@ -117,34 +117,39 @@ func RunPackagePush(opts PackagePushOptions) error {
 	return runPushAt(filepath.Join(installed.Root, shenronpackage.PivotFileName), opts.Target, opts.Force, opts.Adapters, store.StateDir(installed.Name), preflight, postflight)
 }
 
-// newPackageApplyCmds adds the explicit package diff and package push commands.
-// storeRoot is shared with the package command group's persistent --store flag.
-func newPackageApplyCmds(storeRoot *string) (*cobra.Command, *cobra.Command) {
-	var diffTarget string
-	diffCmd := &cobra.Command{
-		Use:   "diff <name>",
-		Short: "Show differences for an installed configuration package",
-		Args:  cobra.ExactArgs(1),
+// NewDiffCmd builds the top-level `diff` command.
+func NewDiffCmd(store func() *shenronpackage.Store) *cobra.Command {
+	var target string
+	cmd := &cobra.Command{
+		Use:          "diff <name>",
+		Short:        "Show differences for an installed configuration package",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunPackageDiff(PackageDiffOptions{Store: storeAt(*storeRoot), Name: args[0], Target: diffTarget, Output: cmd.OutOrStdout()})
+			return RunPackageDiff(PackageDiffOptions{Store: store(), Name: args[0], Target: target, Output: cmd.OutOrStdout()})
 		},
 	}
-	diffCmd.Flags().StringVar(&diffTarget, "target", "", "limit to a single CLI target (e.g. opencode)")
+	cmd.Flags().StringVar(&target, "target", "", "limit to a single CLI target (e.g. opencode)")
+	return cmd
+}
 
-	var pushTarget string
+// NewPushCmd builds the top-level `push` command.
+func NewPushCmd(store func() *shenronpackage.Store) *cobra.Command {
+	var target string
 	var force, allowPermissions bool
-	pushCmd := &cobra.Command{
-		Use:   "push <name>",
-		Short: "Push one installed configuration package",
-		Args:  cobra.ExactArgs(1),
+	cmd := &cobra.Command{
+		Use:          "push <name>",
+		Short:        "Push one installed configuration package",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunPackagePush(PackagePushOptions{Store: storeAt(*storeRoot), Name: args[0], Target: pushTarget, Force: force, AllowPermissions: allowPermissions, Output: cmd.OutOrStdout()})
+			return RunPackagePush(PackagePushOptions{Store: store(), Name: args[0], Target: target, Force: force, AllowPermissions: allowPermissions, Output: cmd.OutOrStdout()})
 		},
 	}
-	pushCmd.Flags().StringVar(&pushTarget, "target", "", "limit to a single CLI target (e.g. opencode)")
-	pushCmd.Flags().BoolVar(&force, "force", false, "overwrite manually edited package-owned native files")
-	pushCmd.Flags().BoolVar(&allowPermissions, "allow-permissions", false, "approve this package revision's declared permissions")
-	return diffCmd, pushCmd
+	cmd.Flags().StringVar(&target, "target", "", "limit to a single CLI target (e.g. opencode)")
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite manually edited package-owned native files")
+	cmd.Flags().BoolVar(&allowPermissions, "allow-permissions", false, "approve this package revision's declared permissions")
+	return cmd
 }
 
 func missingPackageSkills(requirements shenronpackage.SkillRequirements, skillsDir string) (required, optional []string) {
