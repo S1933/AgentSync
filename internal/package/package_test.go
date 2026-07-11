@@ -218,7 +218,7 @@ agents: []
 	}
 }
 
-func TestStoreInstallLocalRejectsSourceChangedWhileWaitingForIndexLock(t *testing.T) {
+func TestStoreInstallLocalUsesSnapshotIdentityWhenSourceChangesWhileWaitingForIndexLock(t *testing.T) {
 	source := writePackage(t, validManifest(), validPivot())
 	store := NewStore(filepath.Join(t.TempDir(), "cache"))
 
@@ -237,19 +237,41 @@ func TestStoreInstallLocalRejectsSourceChangedWhileWaitingForIndexLock(t *testin
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	writeFile(t, filepath.Join(source, "prompts", "review.md"), "Mutated after hashing.")
+	writeFile(t, filepath.Join(source, ManifestFileName), `schemaVersion: "1"
+name: changed-package
+version: 9.9.9
+description: Changed after staging.
+`)
 	if err := unlock(); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-result; err == nil || !strings.Contains(err.Error(), "digest") {
-		t.Fatalf("InstallLocal() error = %v, want snapshot digest mismatch", err)
+	if err := <-result; err != nil {
+		t.Fatalf("InstallLocal() error = %v", err)
 	}
 	installed, err := store.List()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(installed) != 0 {
-		t.Fatalf("List() = %+v, want no indexed packages", installed)
+	if len(installed) != 1 || installed[0].Name != "changed-package" || installed[0].Version != "9.9.9" {
+		t.Fatalf("List() = %+v, want changed snapshot package", installed)
+	}
+}
+
+func TestOpenRegularFileNoFollowRejectsSymlink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	writeFile(t, target, "outside")
+	link := filepath.Join(root, "source")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	file, err := openRegularFileNoFollow(link)
+	if file != nil {
+		_ = file.Close()
+	}
+	if err == nil {
+		t.Fatal("openRegularFileNoFollow() error = nil, want symlink rejection")
 	}
 }
 

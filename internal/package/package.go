@@ -79,20 +79,9 @@ func NewStore(root string) *Store {
 
 // LoadDirectory parses and validates a standalone package directory.
 func LoadDirectory(root string) (*Package, error) {
-	absRoot, err := filepath.Abs(root)
+	realRoot, err := resolveDirectory(root)
 	if err != nil {
-		return nil, fmt.Errorf("resolve package root: %w", err)
-	}
-	realRoot, err := filepath.EvalSymlinks(absRoot)
-	if err != nil {
-		return nil, fmt.Errorf("resolve package root: %w", err)
-	}
-	info, err := os.Stat(realRoot)
-	if err != nil {
-		return nil, fmt.Errorf("stat package root: %w", err)
-	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("package root is not a directory: %s", root)
+		return nil, err
 	}
 	if err := validateNoSymlinks(realRoot); err != nil {
 		return nil, err
@@ -120,6 +109,25 @@ func LoadDirectory(root string) (*Package, error) {
 	}
 
 	return &Package{Root: realRoot, Manifest: *manifest, Pivot: pf}, nil
+}
+
+func resolveDirectory(root string) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve package root: %w", err)
+	}
+	realRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve package root: %w", err)
+	}
+	info, err := os.Stat(realRoot)
+	if err != nil {
+		return "", fmt.Errorf("stat package root: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("package root is not a directory: %s", root)
+	}
+	return realRoot, nil
 }
 
 // ParseManifest decodes a strict manifest and validates its structural and
@@ -235,48 +243,51 @@ func isWithin(root, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
-// InstallLocal validates source then copies it into a content-addressed cache
-// snapshot. A package name can be installed only once until update semantics
-// are introduced by the CLI layer.
+// InstallLocal copies the current source into a content-addressed cache
+// snapshot, then validates and identifies that immutable snapshot. A package
+// name can be installed only once until update semantics are introduced by the
+// CLI layer.
 func (s *Store) InstallLocal(source string) (*InstalledPackage, error) {
-	pkg, err := LoadDirectory(source)
-	if err != nil {
-		return nil, err
-	}
-	digest, err := directoryDigest(pkg.Root)
-	if err != nil {
-		return nil, fmt.Errorf("hash package: %w", err)
-	}
 	unlock, err := s.lockIndex()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = unlock() }()
+
+	staged, err := s.stageLocalSnapshot(source)
+	if err != nil {
+		return nil, err
+	}
+	defer staged.cleanup()
+
 	index, err := s.readIndex()
 	if err != nil {
 		return nil, err
 	}
 	for _, installed := range index.Packages {
-		if installed.Name == pkg.Manifest.Name {
-			return nil, fmt.Errorf("package %q is already installed", pkg.Manifest.Name)
+		if installed.Name == staged.pkg.Manifest.Name {
+			return nil, fmt.Errorf("package %q is already installed", staged.pkg.Manifest.Name)
 		}
 	}
 
-	target := filepath.Join(s.root, "packages", pkg.Manifest.Name, digest)
+	target := filepath.Join(s.root, "packages", staged.pkg.Manifest.Name, staged.digest)
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return nil, fmt.Errorf("create package snapshot parent: %w", err)
+	}
 	if _, err := os.Stat(target); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("stat package snapshot: %w", err)
 	} else if os.IsNotExist(err) {
-		if err := copySnapshot(pkg.Root, target, digest); err != nil {
-			return nil, err
+		if err := os.Rename(staged.root, target); err != nil {
+			return nil, fmt.Errorf("publish package snapshot: %w", err)
 		}
 	}
-	if err := validateSnapshotDigest(target, digest); err != nil {
+	if err := validateSnapshotDigest(target, staged.digest); err != nil {
 		return nil, err
 	}
 
 	installed := InstalledPackage{
-		Name: pkg.Manifest.Name, Version: pkg.Manifest.Version, Description: pkg.Manifest.Description,
-		Source: pkg.Root, Root: target, Digest: digest,
+		Name: staged.pkg.Manifest.Name, Version: staged.pkg.Manifest.Version, Description: staged.pkg.Manifest.Description,
+		Source: staged.source, Root: target, Digest: staged.digest,
 	}
 	index.Packages = append(index.Packages, installed)
 	sort.Slice(index.Packages, func(i, j int) bool { return index.Packages[i].Name < index.Packages[j].Name })
@@ -284,6 +295,49 @@ func (s *Store) InstallLocal(source string) (*InstalledPackage, error) {
 		return nil, err
 	}
 	return &installed, nil
+}
+
+type stagedSnapshot struct {
+	source string
+	root   string
+	tmp    string
+	pkg    *Package
+	digest string
+}
+
+func (s *Store) stageLocalSnapshot(source string) (*stagedSnapshot, error) {
+	sourceRoot, err := resolveDirectory(source)
+	if err != nil {
+		return nil, err
+	}
+	parent := filepath.Join(s.root, "packages")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return nil, fmt.Errorf("create package snapshot parent: %w", err)
+	}
+	tmp, err := os.MkdirTemp(parent, ".package-")
+	if err != nil {
+		return nil, fmt.Errorf("create package snapshot: %w", err)
+	}
+	root := filepath.Join(tmp, "contents")
+	if err := copyDirectory(sourceRoot, root); err != nil {
+		_ = os.RemoveAll(tmp)
+		return nil, fmt.Errorf("copy package snapshot: %w", err)
+	}
+	pkg, err := LoadDirectory(root)
+	if err != nil {
+		_ = os.RemoveAll(tmp)
+		return nil, fmt.Errorf("validate package snapshot: %w", err)
+	}
+	digest, err := directoryDigest(pkg.Root)
+	if err != nil {
+		_ = os.RemoveAll(tmp)
+		return nil, fmt.Errorf("hash package snapshot: %w", err)
+	}
+	return &stagedSnapshot{source: sourceRoot, root: root, tmp: tmp, pkg: pkg, digest: digest}, nil
+}
+
+func (s *stagedSnapshot) cleanup() {
+	_ = os.RemoveAll(s.tmp)
 }
 
 // List returns installed packages ordered by name.
@@ -392,7 +446,7 @@ func directoryDigest(root string) (string, error) {
 		if _, err := io.WriteString(hash, "file\x00"); err != nil {
 			return err
 		}
-		file, err := os.Open(path)
+		file, err := openRegularFileNoFollow(path)
 		if err != nil {
 			return err
 		}
@@ -424,33 +478,6 @@ func validateSnapshotDigest(root, expectedDigest string) error {
 	return nil
 }
 
-func copySnapshot(source, target, expectedDigest string) (err error) {
-	parent := filepath.Dir(target)
-	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return fmt.Errorf("create package snapshot parent: %w", err)
-	}
-	tmp, err := os.MkdirTemp(parent, ".package-")
-	if err != nil {
-		return fmt.Errorf("create package snapshot: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			_ = os.RemoveAll(tmp)
-		}
-	}()
-	staged := filepath.Join(tmp, "contents")
-	if err = copyDirectory(source, staged); err != nil {
-		return fmt.Errorf("copy package snapshot: %w", err)
-	}
-	if err = validateSnapshotDigest(staged, expectedDigest); err != nil {
-		return err
-	}
-	if err = os.Rename(staged, target); err != nil {
-		return fmt.Errorf("publish package snapshot: %w", err)
-	}
-	return nil
-}
-
 func copyDirectory(source, destination string) error {
 	return filepath.WalkDir(source, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -473,7 +500,7 @@ func copyDirectory(source, destination string) error {
 		if !entry.Type().IsRegular() {
 			return fmt.Errorf("unsupported file type: %s", rel)
 		}
-		input, err := os.Open(path)
+		input, err := openRegularFileNoFollow(path)
 		if err != nil {
 			return err
 		}
@@ -493,4 +520,21 @@ func copyDirectory(source, destination string) error {
 		}
 		return closeInErr
 	})
+}
+
+func openRegularFileNoFollow(path string) (*os.File, error) {
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(fd, &stat); err != nil {
+		_ = syscall.Close(fd)
+		return nil, err
+	}
+	if stat.Mode&syscall.S_IFMT != syscall.S_IFREG {
+		_ = syscall.Close(fd)
+		return nil, fmt.Errorf("not a regular file")
+	}
+	return os.NewFile(uintptr(fd), path), nil
 }
