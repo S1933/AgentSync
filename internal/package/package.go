@@ -375,6 +375,46 @@ func (s *Store) List() ([]InstalledPackage, error) {
 	return append([]InstalledPackage(nil), index.Packages...), nil
 }
 
+// Load returns an installed package together with its validated immutable
+// snapshot. The recorded digest is rechecked before every use so a damaged
+// cache can never be pushed.
+func (s *Store) Load(name string) (*InstalledPackage, *Package, error) {
+	if !kebabCase.MatchString(name) {
+		return nil, nil, fmt.Errorf("package name must match ^[a-z][a-z0-9-]*$")
+	}
+	index, err := s.readIndex()
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range index.Packages {
+		installed := index.Packages[i]
+		if installed.Name != name {
+			continue
+		}
+		if err := validateSnapshotDigest(installed.Root, installed.Digest); err != nil {
+			return nil, nil, err
+		}
+		pkg, err := LoadDirectory(installed.Root)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load package snapshot: %w", err)
+		}
+		return &installed, pkg, nil
+	}
+	return nil, nil, fmt.Errorf("package %q is not installed", name)
+}
+
+// StatePath returns the package-owned synchronization state path. State is
+// deliberately kept outside immutable snapshots and persists across revisions
+// of the same package name.
+func (s *Store) StatePath(name string) string {
+	return filepath.Join(s.root, "state", name, ".shenron-state.json")
+}
+
+// StateDir returns the parent directory of StatePath for a package.
+func (s *Store) StateDir(name string) string {
+	return filepath.Dir(s.StatePath(name))
+}
+
 // UpdateLocal validates a fresh local snapshot before replacing the active
 // installed record. Existing immutable snapshots are deliberately retained.
 func (s *Store) UpdateLocal(name, source string) (*InstalledPackage, error) {

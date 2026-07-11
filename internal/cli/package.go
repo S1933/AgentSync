@@ -136,7 +136,8 @@ func NewPackageCmd() *cobra.Command {
 	update.Flags().StringVar(&updateSource, "source", "", "replacement local directory or public HTTPS Git source")
 	update.Flags().StringVar(&updateRef, "ref", "", "immutable Git tag or full commit SHA")
 
-	cmd.AddCommand(install, list, update)
+	diffCmd, pushCmd := newPackageApplyCmds(&storeRoot)
+	cmd.AddCommand(install, list, update, diffCmd, pushCmd)
 	return cmd
 }
 
