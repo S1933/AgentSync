@@ -6,6 +6,8 @@ tools:
   - Read
   - Bash
 permissionMode: default
+skills:
+  - test-driven-development
 ---
 
 You are a build agent responsible for CI/CD.

@@ -4,6 +4,8 @@ description: Build and deploy agent
 tools: Read, Bash, WebSearch
 model: anthropic/claude-sonnet-4-5
 permissionMode: default
+skills:
+  - test-driven-development
 ---
 
 You are a build agent responsible for CI/CD.

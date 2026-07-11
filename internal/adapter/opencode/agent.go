@@ -42,6 +42,10 @@ func GenerateAgentFragment(agent pivot.AgentDefinition, pivotDir string) (jsonFr
 		fragment["permission"] = perms
 	}
 
+	if len(agent.Skills) > 0 {
+		fragment["skills"] = agent.Skills
+	}
+
 	promptContent, err = resolvePromptContent(agent, pivotDir)
 	if err != nil {
 		return nil, "", "", err

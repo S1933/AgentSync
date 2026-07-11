@@ -183,6 +183,40 @@ func TestEndToEnd_PushClaudeCode(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_SkillsRoundTrip(t *testing.T) {
+	env := newIntegrationEnv(t)
+
+	if err := cli.RunPush(env.pushOpts("")); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+
+	configData, err := os.ReadFile(filepath.Join(env.opencodeDir, "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(configData, &root); err != nil {
+		t.Fatal(err)
+	}
+	agents := root["agent"].(map[string]any)
+	build := agents["build"].(map[string]any)
+	if got := stringSliceValue(build["skills"]); len(got) != 1 || got[0] != "test-driven-development" {
+		t.Errorf("OpenCode build skills = %#v", got)
+	}
+	legacy := agents["legacy-helper"].(map[string]any)
+	if got := stringSliceValue(legacy["skills"]); len(got) != 1 || got[0] != "native-existing-skill" {
+		t.Errorf("native OpenCode skills not preserved: %#v", got)
+	}
+
+	claudeData, err := os.ReadFile(filepath.Join(env.claudeDir, "agents", "build.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(claudeData), "skills:\n  - test-driven-development") {
+		t.Errorf("Claude build skills missing:\n%s", claudeData)
+	}
+}
+
 func TestEndToEnd_TargetedPushNoClaudeOrphans(t *testing.T) {
 	env := newIntegrationEnv(t)
 
@@ -409,6 +443,9 @@ func TestEndToEnd_Init(t *testing.T) {
 	if strings.TrimSpace(agent.SystemPrompt) != "You are a legacy helper." {
 		t.Errorf("systemPrompt = %q, want legacy helper prompt", agent.SystemPrompt)
 	}
+	if len(agent.Skills) != 1 || agent.Skills[0] != "native-existing-skill" {
+		t.Errorf("skills = %#v, want native-existing-skill", agent.Skills)
+	}
 }
 
 type integrationEnv struct {
@@ -544,6 +581,17 @@ func assertStateFile(t *testing.T, pivotDir string) {
 	if _, err := os.Stat(statePath); err != nil {
 		t.Fatalf("state file missing: %v", err)
 	}
+}
+
+func stringSliceValue(value any) []string {
+	items, _ := value.([]any)
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if text, ok := item.(string); ok {
+			result = append(result, text)
+		}
+	}
+	return result
 }
 
 func modifyBuildAgent(pivotPath, pivotDir, newPrompt, newDescription string) error {

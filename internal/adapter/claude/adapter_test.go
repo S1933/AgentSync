@@ -245,6 +245,37 @@ func TestNoPermissions(t *testing.T) {
 	}
 }
 
+func TestGenerateAgentSkills(t *testing.T) {
+	agent := pivot.AgentDefinition{
+		ID:          "build",
+		Description: "Build agent",
+		Mode:        "primary",
+		Skills:      []string{"test-driven-development"},
+	}
+
+	files, err := claude.GenerateAgent(agent, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[filepath.Join(claudeAgentDir(t), "build.md")]
+	if !strings.Contains(content, "skills:\n  - test-driven-development") {
+		t.Errorf("expected skills in frontmatter, got:\n%s", content)
+	}
+}
+
+func TestNoSkillsOmitsField(t *testing.T) {
+	agent := pivot.AgentDefinition{ID: "bare", Description: "Bare agent", Mode: "primary"}
+
+	files, err := claude.GenerateAgent(agent, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := files[filepath.Join(claudeAgentDir(t), "bare.md")]
+	if strings.Contains(content, "skills:") {
+		t.Errorf("expected skills to be omitted, got:\n%s", content)
+	}
+}
+
 func TestClaudeExtensionOverrides(t *testing.T) {
 	agent := pivot.AgentDefinition{
 		ID:           "ask",

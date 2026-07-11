@@ -82,6 +82,7 @@ func TestGenerateAgent(t *testing.T) {
 		"model":       "anthropic/claude-sonnet-4-5",
 		"temperature": 0.7,
 		"prompt":      "{file:./prompts/build.md}",
+		"skills":      []string{"test-driven-development"},
 		"steps":       50,
 		"permission": map[string]any{
 			"glob":     "allow",
@@ -101,6 +102,24 @@ func TestGenerateAgent(t *testing.T) {
 		gotJSON, _ := json.MarshalIndent(fragment, "", "  ")
 		wantJSON, _ := json.MarshalIndent(want, "", "  ")
 		t.Errorf("fragment mismatch:\ngot:\n%s\nwant:\n%s", gotJSON, wantJSON)
+	}
+}
+
+func TestGenerateAgentSkills(t *testing.T) {
+	agent := pivot.AgentDefinition{
+		ID:          "build",
+		Description: "Build agent",
+		Mode:        "primary",
+		Skills:      []string{"test-driven-development"},
+	}
+
+	fragment, _, _, err := opencode.GenerateAgentFragment(agent, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"test-driven-development"}
+	if !reflect.DeepEqual(fragment["skills"], want) {
+		t.Errorf("skills = %#v, want %#v", fragment["skills"], want)
 	}
 }
 

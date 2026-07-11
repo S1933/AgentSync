@@ -12,6 +12,7 @@
         "lsp": "deny"
       },
       "prompt": "{file:./prompts/build.md}",
+      "skills": ["test-driven-development"],
       "steps": 50
     }
   },

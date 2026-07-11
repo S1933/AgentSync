@@ -5,6 +5,7 @@ agents:
     mode: primary
     model: anthropic/claude-sonnet-4-5
     temperature: 0.7
+    skills: [test-driven-development]
     systemPrompt: |
       You are a build agent responsible for CI/CD.
     permissions:

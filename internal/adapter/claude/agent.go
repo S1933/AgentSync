@@ -13,11 +13,12 @@ import (
 )
 
 type agentFrontmatter struct {
-	Name           string `yaml:"name"`
-	Description    string `yaml:"description"`
-	Tools          string `yaml:"tools,omitempty"`
-	Model          string `yaml:"model,omitempty"`
-	PermissionMode string `yaml:"permissionMode,omitempty"`
+	Name           string   `yaml:"name"`
+	Description    string   `yaml:"description"`
+	Tools          string   `yaml:"tools,omitempty"`
+	Model          string   `yaml:"model,omitempty"`
+	PermissionMode string   `yaml:"permissionMode,omitempty"`
+	Skills         []string `yaml:"skills,omitempty"`
 }
 
 // GenerateAgent produces a Claude Code agent Markdown file with YAML frontmatter.
@@ -37,6 +38,7 @@ func generateAgentFile(agent pivot.AgentDefinition, pivotDir, baseDir string) (m
 		Model:          resolveModel(agent),
 		Tools:          strings.Join(resolveTools(agent), ", "),
 		PermissionMode: resolvePermissionMode(agent),
+		Skills:         agent.Skills,
 	}
 
 	fmYAML, err := marshalFrontmatter(&fm)

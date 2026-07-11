@@ -194,9 +194,7 @@ func buildOrphanScope(adapters map[string]adapter.Adapter) *diff.OrphanScope {
 	scope := &diff.OrphanScope{}
 	for name, adpt := range adapters {
 		scope.AdapterNames = append(scope.AdapterNames, name)
-		for _, p := range adpt.TargetPaths() {
-			scope.PathPrefixes = append(scope.PathPrefixes, p)
-		}
+		scope.PathPrefixes = append(scope.PathPrefixes, adpt.TargetPaths()...)
 	}
 	sort.Strings(scope.AdapterNames)
 	sort.Strings(scope.PathPrefixes)

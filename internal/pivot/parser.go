@@ -135,6 +135,12 @@ func validateAgent(agent AgentDefinition, prefix, pivotDir string) []string {
 		errs = append(errs, validateExtensions(agent.Extensions, prefix+".extensions")...)
 	}
 
+	for i, name := range agent.Skills {
+		if !idRegex.MatchString(name) {
+			errs = append(errs, fmt.Sprintf("%s.skills[%d] must match ^[a-z][a-z0-9-]*$", prefix, i))
+		}
+	}
+
 	return errs
 }
 

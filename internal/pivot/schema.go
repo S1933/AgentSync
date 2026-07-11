@@ -10,13 +10,14 @@ type PivotFile struct {
 type AgentDefinition struct {
 	ID           string         `yaml:"id"`
 	Description  string         `yaml:"description"`
-	Mode         string         `yaml:"mode"` // "primary" | "subagent"
+	Mode         string         `yaml:"mode"`            // "primary" | "subagent"
 	Model        string         `yaml:"model,omitempty"` // fallback, overridden per-provider by extensions.<provider>.model
 	Temperature  *float64       `yaml:"temperature,omitempty"`
 	SystemPrompt string         `yaml:"systemPrompt,omitempty"`
 	PromptFile   string         `yaml:"promptFile,omitempty"`
 	Permissions  *Permissions   `yaml:"permissions,omitempty"`
 	Extensions   map[string]any `yaml:"extensions,omitempty"`
+	Skills       []string       `yaml:"skills,omitempty"`
 }
 
 type Permissions struct {

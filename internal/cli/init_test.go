@@ -51,6 +51,9 @@ func TestInitFromOpenCode(t *testing.T) {
 	if !strings.Contains(content, "opencode:\n        model: anthropic/claude-sonnet-4-5") {
 		t.Errorf("expected model under extensions.opencode, got:\n%s", content)
 	}
+	if !strings.Contains(content, "skills:\n      - test-driven-development") {
+		t.Errorf("expected OpenCode skills in pivot, got:\n%s", content)
+	}
 }
 
 func TestInitFromClaudeCode(t *testing.T) {
@@ -79,6 +82,9 @@ func TestInitFromClaudeCode(t *testing.T) {
 
 	if !strings.Contains(content, "claude:\n        model: anthropic/claude-sonnet-4-5") {
 		t.Errorf("expected model under extensions.claude, got:\n%s", content)
+	}
+	if !strings.Contains(content, "skills:\n      - test-driven-development") {
+		t.Errorf("expected Claude skills in pivot, got:\n%s", content)
 	}
 }
 

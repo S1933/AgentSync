@@ -7,6 +7,7 @@
     "legacy-helper": {
       "description": "Legacy helper agent preserved during merge",
       "mode": "primary",
+      "skills": ["native-existing-skill"],
       "prompt": "You are a legacy helper."
     }
   }

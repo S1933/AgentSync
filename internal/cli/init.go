@@ -177,6 +177,9 @@ func openCodeAgentToPivot(id string, fragment map[string]any, baseDir string) (p
 	if temp, ok := fragment["temperature"].(float64); ok {
 		agent.Temperature = &temp
 	}
+	if skills := stringSlice(fragment["skills"]); len(skills) > 0 {
+		agent.Skills = skills
+	}
 
 	if prompt := stringValue(fragment["prompt"]); prompt != "" {
 		content, err := readOpenCodeFileRef(prompt, baseDir)
@@ -351,6 +354,7 @@ func claudeAgentFileToPivot(path string) (pivot.AgentDefinition, error) {
 		Mode:         "primary",
 		SystemPrompt: strings.TrimSpace(body),
 		Permissions:  claudeToolsToPermissions(fm),
+		Skills:       stringSlice(fm["skills"]),
 	}
 
 	if model := stringValue(fm["model"]); model != "" {

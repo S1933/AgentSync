@@ -52,6 +52,46 @@ func TestParseValidPivotFile(t *testing.T) {
 	}
 }
 
+func TestParseAgentSkills(t *testing.T) {
+	yaml := `version: "1"
+agents:
+  - id: build
+    description: "test"
+    mode: primary
+    skills:
+      - test-driven-development
+      - verification-before-completion`
+
+	pf, err := Parse([]byte(yaml), testdataDir(t))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"test-driven-development", "verification-before-completion"}
+	if len(pf.Agents[0].Skills) != len(want) {
+		t.Fatalf("skills = %#v, want %#v", pf.Agents[0].Skills, want)
+	}
+	for i := range want {
+		if pf.Agents[0].Skills[i] != want[i] {
+			t.Errorf("skills[%d] = %q, want %q", i, pf.Agents[0].Skills[i], want[i])
+		}
+	}
+}
+
+func TestParseAgentRejectsInvalidSkillName(t *testing.T) {
+	yaml := `version: "1"
+agents:
+  - id: build
+    description: "test"
+    mode: primary
+    skills: ["Invalid Skill"]`
+
+	_, err := Parse([]byte(yaml), testdataDir(t))
+	if err == nil || !strings.Contains(err.Error(), "agents[0].skills[0] must match ^[a-z][a-z0-9-]*$") {
+		t.Fatalf("expected skill name validation error, got: %v", err)
+	}
+}
+
 func TestParseMissingVersion(t *testing.T) {
 	_, err := Parse([]byte(`agents: []`), testdataDir(t))
 	if err == nil || !strings.Contains(err.Error(), "version is required") {

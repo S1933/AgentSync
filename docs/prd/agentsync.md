@@ -65,6 +65,7 @@ Chaque agent dans le pivot a les champs suivants :
 | `promptFile` | string (chemin relatif au répertoire du fichier pivot) | Non | Alternative à `systemPrompt` : référence un fichier Markdown externe contenant le prompt système. Exemple : `prompts/build.md` (relatif au répertoire où se trouve `agentsync.yaml`). |
 | `permissions` | objet | Non | Permissions de l'agent (voir section dédiée) |
 | `extensions` | map string→any | Non | Champs spécifiques à un CLI cible (ex. `claudeCode.maxTurns`, `opencode.steps`). Le cœur ignore ces champs ; les adaptateurs les consomment. |
+| `skills` | list[string] (kebab-case) | Non | Skills que cet agent déclare utiliser. Référence des noms de skills dans `~/.agents/skills/`. Les adaptateurs émettent ce champ dans le format natif. |
 
 **Règle :** `systemPrompt` et `promptFile` ne peuvent pas être spécifiés simultanément.
 
@@ -150,6 +151,7 @@ Valide le fichier pivot contre le schéma. Vérifie :
 - Types corrects
 - Références croisées valides (ex. `commands[].agent` référence un `agents[].id` existant)
 - Les `promptFile` pointent vers des fichiers existants
+- Les `skills` référencent des noms kebab-case valides (regex `^[a-z][a-z0-9-]*$`). Leur absence sur disque produit au plus un warning, car un pivot partagé peut référencer des skills non locales.
 
 ### FR8 — Commande `agents-sync init`
 
@@ -183,6 +185,7 @@ type AgentDefinition struct {
     SystemPrompt string
     Permissions  Permissions
     Extensions   map[string]any
+    Skills       []string
 }
 
 type CommandDefinition struct {
@@ -364,6 +367,7 @@ Les questions ouvertes de conception ont été résolues avant la v1.
 | D6 | Walk-up CWD→root + fallback `$HOME/.agentsync/agentsync.yaml`. Les deux modes (projet et global) coexistent. | FR1 |
 | D7 | Adaptateur pur + méthode `MergeFile` optionnelle dans l'interface `Adapter`. L'adaptateur OpenCode renvoie les fragments JSON pour les blocs `agent`/`command` ; le cœur fait le merge en préservant les champs hors-scope et l'indentation. | FR10 |
 | D8 | Nom du binaire : `agents-sync`. Distribution : binaire statique macOS/Linux via GitHub Releases + script `curl\|sh`. Pas de package npm/pip/brew en v1. | Stack |
+| D9 | Le binding skills-par-agent est désormais dans le scope v1 (amend FR2). D5 reste inchangé pour le contenu des skills, qui demeure read-only. Les adaptateurs émettent `skills` comme metadata, pas comme contenu. L'existence locale d'une skill n'est pas bloquante. | FR2, FR7, FR10 |
 
 ## Acceptance criteria (v1)
 
@@ -379,6 +383,7 @@ Une session de test valide le scénario suivant :
 8. `agents-sync push --target opencode` → refuse d'écraser (sauf `--force`).
 9. `agents-sync push --target claude-code` → écrit `~/.claude/agents/build.md` à partir du même pivot, avec le frontmatter YAML Claude Code.
 10. Les permissions mappées (`edit: ask`, `bash` avec patterns) apparaissent correctement dans les deux fichiers natifs.
+11. `agents-sync push` round-trip un champ `skills: [foo]` modifié : il est visible dans `opencode.json` et `~/.claude/agents/<id>.md` après le push.
 
 ## Stack
 
