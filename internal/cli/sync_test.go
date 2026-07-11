@@ -85,3 +85,13 @@ func TestResolveTargetsUnknown(t *testing.T) {
 		t.Fatal("expected error for unknown target")
 	}
 }
+
+func TestResolveTargetsCodex(t *testing.T) {
+	targets, err := cli.ResolveTargets("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := targets["codex"]; !ok {
+		t.Fatalf("Codex target was not resolved: %#v", targets)
+	}
+}

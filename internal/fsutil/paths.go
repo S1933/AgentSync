@@ -38,3 +38,8 @@ func ClaudePath() string {
 func OpenCodePath() string {
 	return ResolvePath("~/.config/opencode")
 }
+
+// CodexPath returns the Codex user configuration directory (~/.codex).
+func CodexPath() string {
+	return ResolvePath("~/.codex")
+}

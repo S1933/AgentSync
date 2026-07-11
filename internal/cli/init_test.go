@@ -119,6 +119,67 @@ func TestInitFallsBackToClaudeOnBrokenOpenCode(t *testing.T) {
 	}
 }
 
+func TestInitFromCodex(t *testing.T) {
+	dir := t.TempDir()
+	codexDir := filepath.Join(dir, "codex")
+	if err := os.MkdirAll(filepath.Join(codexDir, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(codexDir, "prompts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agent := `name = "code_reviewer"
+description = "Review changes."
+model = "gpt-5.4"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+approval_policy = "on-request"
+web_search = "disabled"
+developer_instructions = "Review carefully.\n\nWhen applicable, use these skills: $verification-before-completion."
+`
+	if err := os.WriteFile(filepath.Join(codexDir, "agents", "code_reviewer.toml"), []byte(agent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prompt := "---\ndescription: \"Review current changes.\"\n---\n\nDelegate this task to the `code_reviewer` custom agent.\n\nFind defects."
+	if err := os.WriteFile(filepath.Join(codexDir, "prompts", "review_changes.md"), []byte(prompt), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cli.RunInit(cli.InitOptions{
+		WorkDir: dir, OpenCodeDir: filepath.Join(dir, "missing-opencode"), ClaudeDir: filepath.Join(dir, "missing-claude"), CodexDir: codexDir,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "shenron.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "id: code-reviewer") || !strings.Contains(string(data), "name: code_reviewer") {
+		t.Fatalf("Codex name was not normalized and preserved:\n%s", data)
+	}
+	if !strings.Contains(string(data), "id: review-changes") || !strings.Contains(string(data), "agent: code-reviewer") {
+		t.Fatalf("Codex command was not imported:\n%s", data)
+	}
+}
+
+func TestInitRejectsCodexPromptNormalizationCollision(t *testing.T) {
+	dir := t.TempDir()
+	codexDir := filepath.Join(dir, "codex")
+	if err := os.MkdirAll(filepath.Join(codexDir, "prompts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"review_changes.md", "review-changes.md"} {
+		if err := os.WriteFile(filepath.Join(codexDir, "prompts", name), []byte("---\ndescription: review\n---\n\nReview."), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := cli.RunInit(cli.InitOptions{WorkDir: dir, OpenCodeDir: filepath.Join(dir, "missing-opencode"), ClaudeDir: filepath.Join(dir, "missing-claude"), CodexDir: codexDir})
+	if err == nil || !strings.Contains(err.Error(), "no native config found") {
+		t.Fatalf("expected Codex source to be skipped after collision, got: %v", err)
+	}
+}
+
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {

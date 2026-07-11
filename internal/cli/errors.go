@@ -3,5 +3,5 @@ package cli
 import "fmt"
 
 func errUnknownTarget(name string) error {
-	return fmt.Errorf("unknown target %q (available: claude-code, opencode)", name)
+	return fmt.Errorf("unknown target %q (available: claude-code, codex, opencode)", name)
 }

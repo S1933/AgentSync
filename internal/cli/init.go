@@ -11,6 +11,7 @@ import (
 
 	"github.com/S1933/Shenron/internal/fsutil"
 	"github.com/S1933/Shenron/internal/pivot"
+	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -22,6 +23,7 @@ type InitOptions struct {
 	WorkDir     string
 	OpenCodeDir string
 	ClaudeDir   string
+	CodexDir    string
 }
 
 // NewInitCmd creates the init subcommand.
@@ -58,7 +60,7 @@ func RunInit(opts InitOptions) error {
 		return err
 	}
 	if pf == nil {
-		return fmt.Errorf("no native config found (checked OpenCode and Claude Code)")
+		return fmt.Errorf("no native config found (checked OpenCode, Claude Code, and Codex)")
 	}
 
 	data, err := marshalPivot(pf)
@@ -95,7 +97,196 @@ func bootstrapPivot(opts InitOptions) (*pivot.PivotFile, string, error) {
 		return pf, "claude-code", nil
 	}
 
+	codexDir := opts.CodexDir
+	if codexDir == "" {
+		codexDir = fsutil.CodexPath()
+	}
+	if pf, err := bootstrapFromCodex(codexDir); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: skipping Codex bootstrap: %v\n", err)
+	} else if pf != nil {
+		return pf, "codex", nil
+	}
+
 	return nil, "", nil
+}
+
+type codexAgentFile struct {
+	Name                  string   `toml:"name"`
+	Description           string   `toml:"description"`
+	DeveloperInstructions string   `toml:"developer_instructions"`
+	Model                 string   `toml:"model"`
+	ModelReasoningEffort  string   `toml:"model_reasoning_effort"`
+	SandboxMode           string   `toml:"sandbox_mode"`
+	ApprovalPolicy        string   `toml:"approval_policy"`
+	WebSearch             string   `toml:"web_search"`
+	NicknameCandidates    []string `toml:"nickname_candidates"`
+}
+
+func bootstrapFromCodex(baseDir string) (*pivot.PivotFile, error) {
+	agentFiles, _ := filepath.Glob(filepath.Join(baseDir, "agents", "*.toml"))
+	promptFiles, _ := filepath.Glob(filepath.Join(baseDir, "prompts", "*.md"))
+	if len(agentFiles) == 0 && len(promptFiles) == 0 {
+		return nil, nil
+	}
+	sort.Strings(agentFiles)
+	sort.Strings(promptFiles)
+
+	pf := &pivot.PivotFile{Version: "1"}
+	normalizedAgents := map[string]string{}
+	for _, path := range agentFiles {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		var native codexAgentFile
+		if err := toml.Unmarshal(data, &native); err != nil {
+			return nil, fmt.Errorf("parse %s: %w", filepath.Base(path), err)
+		}
+		if native.Name == "" {
+			native.Name = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		}
+		id, err := normalizeCodexID(native.Name)
+		if err != nil {
+			return nil, err
+		}
+		if previous, exists := normalizedAgents[id]; exists {
+			return nil, fmt.Errorf("Codex agent names %q and %q both normalize to %q", previous, native.Name, id)
+		}
+		normalizedAgents[id] = native.Name
+		agent := pivot.AgentDefinition{ID: id, Description: native.Description, Mode: "subagent"}
+		instructions, skills := splitCodexSkillHint(native.DeveloperInstructions)
+		agent.SystemPrompt, agent.Skills = instructions, skills
+		codex := map[string]any{}
+		if native.Name != id {
+			codex["name"] = native.Name
+		}
+		if native.Model != "" {
+			codex["model"] = native.Model
+		}
+		if native.ModelReasoningEffort != "" {
+			codex["modelReasoningEffort"] = native.ModelReasoningEffort
+		}
+		if native.SandboxMode != "" {
+			codex["sandboxMode"] = native.SandboxMode
+		}
+		if native.ApprovalPolicy != "" {
+			codex["approvalPolicy"] = native.ApprovalPolicy
+		}
+		if native.WebSearch != "" {
+			codex["webSearch"] = native.WebSearch
+		}
+		if len(native.NicknameCandidates) > 0 {
+			values := make([]any, len(native.NicknameCandidates))
+			for i, nickname := range native.NicknameCandidates {
+				values[i] = nickname
+			}
+			codex["nicknameCandidates"] = values
+		}
+		if len(codex) > 0 {
+			agent.Extensions = map[string]any{"codex": codex}
+		}
+		agent.Permissions = codexPermissions(native)
+		pf.Agents = append(pf.Agents, agent)
+	}
+
+	normalizedCommands := map[string]string{}
+	for _, path := range promptFiles {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		frontmatter, body, err := splitFrontmatter(string(data))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
+		}
+		nativeName := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		id, err := normalizeCodexID(nativeName)
+		if err != nil {
+			return nil, err
+		}
+		if previous, exists := normalizedCommands[id]; exists {
+			return nil, fmt.Errorf("Codex prompt names %q and %q both normalize to %q", previous, nativeName, id)
+		}
+		normalizedCommands[id] = nativeName
+		cmd := pivot.CommandDefinition{ID: id, Description: stringValue(frontmatter["description"]), Template: body}
+		if nativeName != id {
+			cmd.Extensions = map[string]any{"codex": map[string]any{"name": nativeName}}
+		}
+		const delegationPrefix = "Delegate this task to the `"
+		if strings.HasPrefix(body, delegationPrefix) {
+			rest := strings.TrimPrefix(body, delegationPrefix)
+			if end := strings.Index(rest, "` custom agent."); end >= 0 {
+				nativeAgent := rest[:end]
+				matched := false
+				for pivotID, name := range normalizedAgents {
+					if name == nativeAgent {
+						cmd.Agent = pivotID
+						matched = true
+						break
+					}
+				}
+				if matched {
+					body = strings.TrimLeft(rest[end+len("` custom agent."):], "\n")
+					cmd.Template = body
+				}
+			}
+		}
+		pf.Commands = append(pf.Commands, cmd)
+	}
+	return pf, nil
+}
+
+func normalizeCodexID(name string) (string, error) {
+	id := strings.ReplaceAll(name, "_", "-")
+	if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(id) {
+		return "", fmt.Errorf("Codex name %q cannot be represented as a Shenron id", name)
+	}
+	return id, nil
+}
+
+func splitCodexSkillHint(instructions string) (string, []string) {
+	const marker = "\n\nWhen applicable, use these skills: "
+	index := strings.LastIndex(instructions, marker)
+	if index < 0 || !strings.HasSuffix(instructions, ".") {
+		return instructions, nil
+	}
+	list := strings.TrimSuffix(instructions[index+len(marker):], ".")
+	var skills []string
+	for _, item := range strings.Split(list, ", ") {
+		skill := strings.TrimPrefix(item, "$")
+		if regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(skill) {
+			skills = append(skills, skill)
+		}
+	}
+	if len(skills) == 0 {
+		return instructions, nil
+	}
+	return strings.TrimRight(instructions[:index], "\n"), skills
+}
+
+func codexPermissions(native codexAgentFile) *pivot.Permissions {
+	perms := &pivot.Permissions{}
+	switch native.SandboxMode {
+	case "workspace-write":
+		perms.Edit = "allow"
+	case "read-only":
+		if native.ApprovalPolicy == "on-request" {
+			perms.Edit = "ask"
+		} else if native.ApprovalPolicy == "never" {
+			perms.Edit = "deny"
+		}
+	}
+	if native.WebSearch != "" {
+		if native.WebSearch == "disabled" {
+			perms.WebSearch = "deny"
+		} else {
+			perms.WebSearch = "allow"
+		}
+	}
+	if perms.Edit == "" && perms.WebSearch == "" {
+		return nil
+	}
+	return perms
 }
 
 func bootstrapFromOpenCode(baseDir string) (*pivot.PivotFile, error) {

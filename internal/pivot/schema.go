@@ -30,11 +30,12 @@ type Permissions struct {
 }
 
 type CommandDefinition struct {
-	ID          string `yaml:"id"`
-	Description string `yaml:"description"`
-	Template    string `yaml:"template"`
-	Agent       string `yaml:"agent,omitempty"`
-	Model       string `yaml:"model,omitempty"`
+	ID          string         `yaml:"id"`
+	Description string         `yaml:"description"`
+	Template    string         `yaml:"template"`
+	Agent       string         `yaml:"agent,omitempty"`
+	Model       string         `yaml:"model,omitempty"`
+	Extensions  map[string]any `yaml:"extensions,omitempty"`
 }
 
 type SkillReference struct {

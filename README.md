@@ -5,21 +5,20 @@ one CLI-agnostic source of truth.
 
 Define agents, prompts, slash commands, permissions, and per-agent skill
 bindings once in `shenron.yaml`. Shenron validates that pivot, previews the
-native changes, then writes the corresponding Claude Code and OpenCode files.
+native changes, then writes the corresponding Claude Code, Codex, and OpenCode files.
 
 ## What it supports
 
-| Capability | Claude Code | OpenCode |
-|---|---|---|
-| Agents | `~/.claude/agents/<id>.md` | `agent.<id>` in `~/.config/opencode/opencode.json` |
-| Agent prompts | Markdown body | `prompts/<id>.md` referenced from JSON |
-| Slash commands | `~/.claude/commands/<id>.md` | `command.<id>` plus `command/<id>.md` |
-| Permissions | `tools` and `permissionMode` | Native `permission` object |
-| Per-agent skills | YAML frontmatter `skills` | Native JSON `skills` array |
-| Bootstrap with `init` | Imported when OpenCode is unavailable | Preferred import source |
+| Capability | Claude Code | Codex | OpenCode |
+|---|---|---|---|
+| Agents | `~/.claude/agents/<id>.md` | `~/.codex/agents/<id>.toml` | `agent.<id>` in `~/.config/opencode/opencode.json` |
+| Agent prompts | Markdown body | `developer_instructions` | `prompts/<id>.md` referenced from JSON |
+| Slash commands | `~/.claude/commands/<id>.md` | `~/.codex/prompts/<id>.md` | `command.<id>` plus `command/<id>.md` |
+| Permissions | `tools` and `permissionMode` | Sandbox, approvals, and web search | Native `permission` object |
+| Per-agent skills | YAML frontmatter `skills` | Instruction hint | Native JSON `skills` array |
+| Bootstrap with `init` | After OpenCode | After Claude Code | Preferred import source |
 
-Shenron currently targets Claude Code and OpenCode. The adapter boundary is
-designed for adding more targets, but no Codex adapter is included yet.
+Shenron targets Claude Code, Codex, and OpenCode.
 
 ## Install
 
@@ -76,8 +75,8 @@ synchronized target.
 Common flags:
 
 - `-c, --config <path>` selects an explicit pivot file.
-- `diff --target <name>` and `push --target <name>` select `claude-code` or
-  `opencode`.
+- `diff --target <name>` and `push --target <name>` select `claude-code`,
+  `codex`, or `opencode`.
 - `push --dry-run` is equivalent to `diff`.
 - `push --force` overwrites native files that changed after the last push.
 
@@ -132,6 +131,12 @@ agents:
           grep: allow
           list: allow
           lsp: deny
+      codex:
+        model: gpt-5.4
+        modelReasoningEffort: high
+        sandboxMode: workspace-write
+        approvalPolicy: on-request
+        webSearch: live
 
 commands:
   - id: ship
@@ -177,7 +182,7 @@ The repository's current dogfood bindings are documented in
 
 For agents, each adapter first looks for its target-specific override:
 
-1. `extensions.claude.model` or `extensions.opencode.model`
+1. `extensions.claude.model`, `extensions.codex.model`, or `extensions.opencode.model`
 2. the shared `model` field
 3. the target's own default when neither is set
 
@@ -203,6 +208,13 @@ its `permission` object. A shared `read` value expands to `glob`, `grep`,
 `list`, and `lsp`; `extensions.opencode.permission` can override those four
 sub-permissions individually.
 
+Codex derives a coarse sandbox from `edit`, and maps `websearch` to Codex's
+native search mode. Command-pattern bash rules, `read`, `webfetch`, and task
+permissions have no equivalent per-agent Codex enforcement. Use
+`extensions.codex` (`sandboxMode`, `approvalPolicy`, and `webSearch`) for an
+explicit native override. Codex receives each agent skill list as an
+instruction hint; Shenron does not resolve local skill paths or install skills.
+
 ## Bootstrap and round-trip behavior
 
 `shenron init` writes a new pivot in the current directory:
@@ -210,7 +222,9 @@ sub-permissions individually.
 1. It tries `~/.config/opencode/opencode.json`.
 2. If OpenCode is missing or unusable, it tries `~/.claude/agents` and
    `~/.claude/commands`.
-3. It imports supported agents, commands, prompts, permissions, model
+3. If Claude Code is unavailable, it tries `~/.codex/agents` and
+   `~/.codex/prompts`.
+4. It imports supported agents, commands, prompts, permissions, model
    overrides, and per-agent skills.
 
 Bootstrap is intentionally selective. Native fields without a pivot equivalent
@@ -248,7 +262,6 @@ use `push --force` deliberately.
 
 ## Current limitations
 
-- Only Claude Code and OpenCode adapters are registered.
 - Sync is pivot-to-native; there is no automatic native-to-pivot merge after
   initialization.
 - Native entries removed from the pivot are warned about, not deleted.
@@ -267,6 +280,7 @@ internal/
   pivot/               YAML schema, discovery, parsing, validation
   adapter/
     claude/            Markdown/frontmatter and command-file generation
+    codex/             TOML custom-agent and Markdown custom-prompt generation
     opencode/          JSON fragments, ordered merge, prompt/command files
   diff/                status calculation, unified diffs, state hashes
   fsutil/              target paths and atomic file replacement

@@ -28,7 +28,7 @@ L'objectif est de remplacer cette duplication manuelle par un outil qui maintien
 - **Pas de wizard interactif.** Le fichier pivot est écrit à la main en YAML. Une commande `init` peut générer un squelette, mais pas de interface TUI/questionnaire.
 - **Pas de `pull`.** L'import d'une configuration native existante vers le format pivot est hors scope v1. Priorité au sens `pivot → natif`.
 - **Pas de gestion des settings.json / config.toml globaux.** Les permissions, modèles, providers, hooks, MCP servers, et autres settings "environnement" restent gérés manuellement dans chaque outil. Le pivot ne couvre que les **agents et les slash-commands** en v1. Les skills sont déjà standardisés via `SKILL.md` — le pivot les référence mais ne les réécrit pas.
-- **Pas de Codex adapter en v1.** Codex est le 3e adaptateur. v1 = OpenCode + Claude Code.
+- **Pas de gestion des contenus de skills Codex.** Shenron transmet seulement les noms de skills comme instruction aux agents Codex; il ne résout ni ne copie les chemins locaux.
 - **Pas de support Windows en v1.** macOS et Linux uniquement (les chemins de config sont POSIX).
 
 ## Functional requirements
@@ -304,8 +304,8 @@ shenron.yaml  ──[parser]──►  []AgentDefinition  ──[adapter.Generat
 
 | Concept | Format | Emplacement |
 |---|---|---|
-| Agent (subagent) | Table TOML `[agents.<name>]` dans `config.toml` : `description`, `config_file`, `nickname_candidates` | `~/.codex/config.toml` |
-| Instructions (AGENTS.md) | Markdown concaténé par walk-up de dossiers | `~/.codex/AGENTS.md` ou `AGENTS.md` dans le repo |
+| Agent | Fichier TOML autonome : `name`, `description`, `developer_instructions`, modèle et sandbox | `~/.codex/agents/<name>.toml` |
+| Command | Markdown avec frontmatter `description` | `~/.codex/prompts/<name>.md` |
 | Skills | Dossier avec `SKILL.md` (standard agentskills.io) | `~/.agents/skills/`, `$REPO_ROOT/.agents/skills/`, `/etc/codex/skills/` |
 
 ## Testing strategy
@@ -384,6 +384,7 @@ Une session de test valide le scénario suivant :
 9. `shenron push --target claude-code` → écrit `~/.claude/agents/build.md` à partir du même pivot, avec le frontmatter YAML Claude Code.
 10. Les permissions mappées (`edit: ask`, `bash` avec patterns) apparaissent correctement dans les deux fichiers natifs.
 11. `shenron push` round-trip un champ `skills: [foo]` modifié : il est visible dans `opencode.json` et `~/.claude/agents/<id>.md` après le push.
+12. `shenron push --target codex` génère les agents TOML et prompts Markdown, puis `shenron diff --target codex` retourne "No changes".
 
 ## Stack
 

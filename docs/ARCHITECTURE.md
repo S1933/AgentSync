@@ -5,8 +5,8 @@
 Shenron is a Go command-line application that treats `shenron.yaml` as the
 authoritative, tool-neutral description of coding-assistant agents, commands,
 permissions, prompts, and skill references. It validates that pivot model and
-renders it into the native configuration formats used by Claude Code and
-OpenCode.
+renders it into the native configuration formats used by Claude Code, Codex,
+and OpenCode.
 
 The system is intentionally one-way:
 
@@ -18,7 +18,7 @@ shenron.yaml -> validated pivot model -> target adapters -> native files
 ```
 
 `init` is the exception: it bootstraps a new pivot file from an existing
-OpenCode or Claude Code configuration. Normal synchronization never reads a
+OpenCode, Claude Code, or Codex configuration. Normal synchronization never reads a
 native configuration back into the pivot.
 
 ## Architectural drivers
@@ -38,6 +38,7 @@ flowchart LR
     Pivot[shenron.yaml] --> CLI
     Prompt[Referenced prompt files] --> CLI
     CLI --> Claude[Claude Code config\n~/.claude]
+    CLI --> Codex[Codex config\n~/.codex]
     CLI --> OpenCode[OpenCode config\n~/.config/opencode]
     CLI --> State[.shenron-state.json]
 ```
@@ -55,6 +56,7 @@ implementation.
 | `internal/pivot` | Pivot schema, YAML parsing, validation, and discovery | `Discover`, `Parse`, pivot types |
 | `internal/adapter` | Seam between the tool-neutral model and target formats | `Adapter` |
 | `internal/adapter/claude` | Claude Markdown/frontmatter generation | `adapter.Adapter` implementation |
+| `internal/adapter/codex` | Codex TOML custom-agent and Markdown custom-prompt generation | `adapter.Adapter` implementation |
 | `internal/adapter/opencode` | OpenCode JSON fragments, ordered merge, and prompt files | `adapter.Adapter` plus fragment accumulation |
 | `internal/diff` | Disk comparison, unified output, manual-edit detection, push state | `ComputeDiffs`, `LoadState`, `SaveState` |
 | `internal/fsutil` | Configuration paths and atomic replacement | `WriteFileAtomic`, path helpers |
@@ -73,6 +75,9 @@ flowchart TD
     Claude[adapter/claude] --> AdapterInterface
     Claude --> Pivot
     Claude --> FS
+    Codex[adapter/codex] --> AdapterInterface
+    Codex --> Pivot
+    Codex --> FS
     OpenCode[adapter/opencode] --> AdapterInterface
     OpenCode --> Pivot
     OpenCode --> FS
@@ -234,11 +239,19 @@ top-level keys and native-only nested entries survive the merge.
 OpenCode synchronization is deliberately upsert-only. Removing an item from the
 pivot does not remove the corresponding nested entry from `opencode.json`.
 
+### Codex
+
+The Codex adapter writes independent files under `~/.codex/agents` and
+`~/.codex/prompts`, so it does not merge `config.toml`. It maps pivot agents to
+custom agent roles and commands to custom prompts. The adapter explicitly
+documents its coarse permission mapping; unsupported per-tool permissions are
+not represented as native enforcement.
+
 ## Command behavior
 
 | Command | Read path | Write path | Important behavior |
 |---|---|---|---|
-| `init` | First usable OpenCode config, then Claude config | New `./shenron.yaml` | Refuses to overwrite an existing pivot |
+| `init` | First usable OpenCode config, then Claude config, then Codex config | New `./shenron.yaml` | Refuses to overwrite an existing pivot |
 | `validate` | Discovered pivot and referenced prompt files | None | Runs pivot validation only |
 | `diff` | Pivot, native files, state | None | Reports per-target changes and orphans |
 | `push --dry-run` | Same as `diff` | None | Delegates to the diff path |
@@ -306,6 +319,7 @@ internal/
   adapter/
     adapter.go                target interface
     claude/                   Claude Markdown adapter
+    codex/                    Codex TOML/Markdown adapter
     opencode/                 OpenCode JSON/Markdown adapter
   diff/                       comparison and state tracking
   fsutil/                     paths and atomic writes

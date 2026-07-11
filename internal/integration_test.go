@@ -10,6 +10,7 @@ import (
 
 	"github.com/S1933/Shenron/internal/adapter"
 	"github.com/S1933/Shenron/internal/adapter/claude"
+	"github.com/S1933/Shenron/internal/adapter/codex"
 	"github.com/S1933/Shenron/internal/adapter/opencode"
 	"github.com/S1933/Shenron/internal/cli"
 	"github.com/S1933/Shenron/internal/pivot"
@@ -17,6 +18,38 @@ import (
 )
 
 const integrationFixtureDir = "../testdata/integration"
+
+func TestEndToEnd_PushCodex(t *testing.T) {
+	env := newIntegrationEnv(t)
+	if err := cli.RunPush(env.pushOpts("codex")); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+
+	agent, err := os.ReadFile(filepath.Join(env.codexDir, "agents", "build.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"name = 'build'", "You are a build agent responsible for CI/CD tasks.", "$test-driven-development"} {
+		if !strings.Contains(string(agent), want) {
+			t.Errorf("Codex agent missing %q:\n%s", want, agent)
+		}
+	}
+	command, err := os.ReadFile(filepath.Join(env.codexDir, "prompts", "ship.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(command), "Delegate this task to the `build` custom agent.") {
+		t.Errorf("Codex command did not delegate:\n%s", command)
+	}
+
+	out, err := cli.CaptureOutput(func() error { return cli.RunDiff(env.diffOpts("codex")) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "No changes") {
+		t.Fatalf("expected no changes after Codex push, got:\n%s", out)
+	}
+}
 
 func TestEndToEnd_PushOpenCode(t *testing.T) {
 	env := newIntegrationEnv(t)
@@ -453,6 +486,7 @@ type integrationEnv struct {
 	pivotPath   string
 	opencodeDir string
 	claudeDir   string
+	codexDir    string
 }
 
 func newIntegrationEnv(t *testing.T) integrationEnv {
@@ -479,12 +513,17 @@ func newIntegrationEnv(t *testing.T) integrationEnv {
 	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	codexDir := filepath.Join(tmp, "codex")
+	if err := os.MkdirAll(codexDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	return integrationEnv{
 		pivotDir:    tmp,
 		pivotPath:   pivotPath,
 		opencodeDir: opencodeDir,
 		claudeDir:   claudeDir,
+		codexDir:    codexDir,
 	}
 }
 
@@ -492,6 +531,7 @@ func (env integrationEnv) adapters() map[string]adapter.Adapter {
 	return map[string]adapter.Adapter{
 		"opencode":    opencode.NewAdapterWithBaseDir(env.opencodeDir, env.pivotDir),
 		"claude-code": claude.NewAdapterWithBaseDir(env.claudeDir, env.pivotDir),
+		"codex":       codex.NewAdapterWithBaseDir(env.codexDir, env.pivotDir),
 	}
 }
 

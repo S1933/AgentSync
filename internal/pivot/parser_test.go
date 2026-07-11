@@ -286,3 +286,54 @@ agents:
 		t.Fatalf("expected permission enum error, got: %v", err)
 	}
 }
+
+func TestParseCodexExtensionValidation(t *testing.T) {
+	valid := `version: "1"
+agents:
+  - id: reviewer
+    description: "Review changes"
+    mode: subagent
+    extensions:
+      codex:
+        name: code_reviewer
+        modelReasoningEffort: high
+        sandboxMode: read-only
+        approvalPolicy: on-request
+        webSearch: disabled
+        nicknameCandidates: [Atlas, Delta]
+commands:
+  - id: review
+    description: "Review"
+    template: "Review it"
+    extensions:
+      codex:
+        name: review_changes`
+	if _, err := Parse([]byte(valid), testdataDir(t)); err != nil {
+		t.Fatalf("valid Codex extensions: %v", err)
+	}
+
+	invalid := strings.Replace(valid, "modelReasoningEffort: high", "modelReasoningEffort: fastest", 1)
+	_, err := Parse([]byte(invalid), testdataDir(t))
+	if err == nil || !strings.Contains(err.Error(), "agents[0].extensions.codex.modelReasoningEffort") {
+		t.Fatalf("expected Codex extension error, got: %v", err)
+	}
+}
+
+func TestParseRejectsDuplicateCodexNativeNames(t *testing.T) {
+	yaml := `version: "1"
+agents:
+  - id: build
+    description: "Build"
+    mode: primary
+    extensions:
+      codex: {name: shared_role}
+  - id: review
+    description: "Review"
+    mode: subagent
+    extensions:
+      codex: {name: shared_role}`
+	_, err := Parse([]byte(yaml), testdataDir(t))
+	if err == nil || !strings.Contains(err.Error(), "duplicate Codex native agent name") {
+		t.Fatalf("expected duplicate Codex native-name error, got: %v", err)
+	}
+}

@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/S1933/Shenron/internal/adapter"
 	"github.com/S1933/Shenron/internal/adapter/claude"
+	"github.com/S1933/Shenron/internal/adapter/codex"
 	"github.com/S1933/Shenron/internal/adapter/opencode"
 )
 
@@ -10,6 +11,7 @@ import (
 func Registry() map[string]adapter.Adapter {
 	return map[string]adapter.Adapter{
 		"claude-code": claude.NewAdapter(),
+		"codex":       codex.NewAdapter(),
 		"opencode":    opencode.NewAdapter(),
 	}
 }
