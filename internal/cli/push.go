@@ -55,9 +55,24 @@ func NewPushCmd(configPath *string) *cobra.Command {
 }
 
 func runPush(configPath, target string, force bool, adapters map[string]adapter.Adapter) error {
-	pivotDir, generated, state, adapters, err := prepareSync(configPath, target, adapters)
+	return runPushAt(configPath, target, force, adapters, "", nil, nil)
+}
+
+type pushPreflight func(generated map[string]map[string]string, state *diff.StateFile, adapters map[string]adapter.Adapter) error
+type pushPostflight func(generated map[string]map[string]string, state *diff.StateFile) error
+
+func runPushAt(configPath, target string, force bool, adapters map[string]adapter.Adapter, stateDir string, preflight pushPreflight, postflight pushPostflight) error {
+	pivotDir, generated, state, adapters, err := prepareSyncAt(configPath, target, adapters, stateDir)
 	if err != nil {
 		return err
+	}
+	if stateDir == "" {
+		stateDir = pivotDir
+	}
+	if preflight != nil {
+		if err := preflight(generated, state, adapters); err != nil {
+			return err
+		}
 	}
 
 	scope := buildOrphanScope(adapters)
@@ -105,15 +120,20 @@ func runPush(configPath, target string, force bool, adapters map[string]adapter.
 			}
 		}
 	}
+	if postflight != nil {
+		if err := postflight(generated, state); err != nil {
+			return err
+		}
+	}
 
-	if err := diff.SaveState(pivotDir, state); err != nil {
+	if err := diff.SaveState(stateDir, state); err != nil {
 		return err
 	}
 
 	if !wroteAny {
 		fmt.Println("No changes")
 	} else {
-		fmt.Printf("state updated: %s\n", filepath.Join(pivotDir, ".shenron-state.json"))
+		fmt.Printf("state updated: %s\n", filepath.Join(stateDir, ".shenron-state.json"))
 	}
 
 	return nil
@@ -151,6 +171,10 @@ func mergeGenerated(generated map[string]map[string]string) map[string]string {
 }
 
 func prepareSync(configPath, target string, adapters map[string]adapter.Adapter) (pivotDir string, generated map[string]map[string]string, state *diff.StateFile, resolved map[string]adapter.Adapter, err error) {
+	return prepareSyncAt(configPath, target, adapters, "")
+}
+
+func prepareSyncAt(configPath, target string, adapters map[string]adapter.Adapter, stateDir string) (pivotDir string, generated map[string]map[string]string, state *diff.StateFile, resolved map[string]adapter.Adapter, err error) {
 	path, err := pivot.Discover(configPath)
 	if err != nil {
 		return "", nil, nil, nil, err
@@ -179,7 +203,10 @@ func prepareSync(configPath, target string, adapters map[string]adapter.Adapter)
 		return "", nil, nil, nil, err
 	}
 
-	state, err = diff.LoadState(pivotDir)
+	if stateDir == "" {
+		stateDir = pivotDir
+	}
+	state, err = diff.LoadState(stateDir)
 	if err != nil {
 		return "", nil, nil, nil, err
 	}

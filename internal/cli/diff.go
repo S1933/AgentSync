@@ -62,7 +62,11 @@ func NewDiffCmd(configPath *string) *cobra.Command {
 }
 
 func runDiff(configPath, target string, adapters map[string]adapter.Adapter) error {
-	_, generated, state, resolved, err := prepareSync(configPath, target, adapters)
+	return runDiffAt(configPath, target, adapters, "")
+}
+
+func runDiffAt(configPath, target string, adapters map[string]adapter.Adapter, stateDir string) error {
+	_, generated, state, resolved, err := prepareSyncAt(configPath, target, adapters, stateDir)
 	if err != nil {
 		return err
 	}

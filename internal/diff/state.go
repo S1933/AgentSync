@@ -91,10 +91,12 @@ func (s *StateFile) SetFile(path, adapter string, content []byte) {
 	if s.Files == nil {
 		s.Files = make(map[string]FileState)
 	}
+	managed := s.Files[path].Managed
 	s.Files[path] = FileState{
 		Path:    path,
 		Hash:    HashContent(content),
 		Adapter: adapter,
+		Managed: managed,
 	}
 }
 
