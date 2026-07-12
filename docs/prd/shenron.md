@@ -422,7 +422,6 @@ Une session de test valide le scénario suivant :
 - **CLI** : `github.com/spf13/cobra`
 - **YAML** : `gopkg.in/yaml.v3`
 - **TOML** (Codex adapter v2) : `github.com/pelletier/go-toml/v2`
-- **Markdown frontmatter** : `github.com/adrg/frontmatter`
 - **Tests** : `testing` standard + golden files
 - **Build** : `go build -o shenron ./cmd/shenron/`
 - **Lint** : `golangci-lint run`
