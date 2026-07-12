@@ -413,7 +413,16 @@ func TestStoreInstallLocalWaitsForIndexLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer unlock()
+	// Capture unlock by reference so we can neutralize it after explicit release.
+	released := false
+	release := func() error {
+		if released {
+			return nil
+		}
+		released = true
+		return unlock()
+	}
+	defer func() { _ = release() }()
 
 	result := make(chan error, 1)
 	go func() {
@@ -427,10 +436,9 @@ func TestStoreInstallLocalWaitsForIndexLock(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	if err := unlock(); err != nil {
+	if err := release(); err != nil {
 		t.Fatal(err)
 	}
-	unlock = func() error { return nil }
 	if err := <-result; err != nil {
 		t.Fatalf("InstallLocal() after unlocking = %v", err)
 	}

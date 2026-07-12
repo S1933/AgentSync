@@ -228,6 +228,41 @@ func TestMergeFilePreservesNativeAgentsNotInPivot(t *testing.T) {
 	}
 }
 
+func TestMergeFilePrunesStaleManagedAgent(t *testing.T) {
+	a := opencode.NewAdapter()
+	existing := []byte(`{
+  "agent": {
+    "build": {"description": "Build"},
+    "stale": {"description": "was managed, now removed from pivot"}
+  },
+  "command": {}
+}`)
+	fragments := map[string]any{
+		"agent.build": map[string]any{"description": "Build and deploy agent"},
+	}
+	managed := map[string][]string{
+		"agent":   {"build", "stale"},
+		"command": {},
+	}
+
+	pruned, err := a.PruneManaged("opencode.json", existing, managed, fragments)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var root map[string]any
+	if err := json.Unmarshal(pruned, &root); err != nil {
+		t.Fatal(err)
+	}
+	agents := root["agent"].(map[string]any)
+	if _, ok := agents["stale"]; ok {
+		t.Error("stale managed agent should be pruned")
+	}
+	if _, ok := agents["build"]; !ok {
+		t.Error("build agent should remain")
+	}
+}
+
 func TestMergeFilePreservesKeyOrder(t *testing.T) {
 	a := opencode.NewAdapter()
 	existing := []byte(`{

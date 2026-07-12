@@ -70,6 +70,20 @@ func (o *orderedObject) get(key string) (json.RawMessage, bool) {
 	return v, ok
 }
 
+// delete removes the entry with the given key. No-op if the key is absent.
+func (o *orderedObject) delete(key string) {
+	if _, exists := o.vals[key]; !exists {
+		return
+	}
+	delete(o.vals, key)
+	for i, k := range o.keys {
+		if k == key {
+			o.keys = append(o.keys[:i], o.keys[i+1:]...)
+			break
+		}
+	}
+}
+
 // compact renders the object as compact JSON in key order. Run the result through
 // json.Indent for a pretty-printed form identical to json.MarshalIndent's.
 func (o *orderedObject) compact() ([]byte, error) {

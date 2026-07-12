@@ -101,12 +101,19 @@ func (s *StateFile) SetFile(path, adapter string, content []byte) {
 }
 
 // SetManaged records the managed leaf keys for a merged config file, preserving
-// the existing hash entry for that path.
+// the existing hash entry for that path. When path has no existing entry, the
+// hash is seeded from the file's current on-disk content so recording
+// ownership ahead of a native write does not itself look like a manual edit.
 func (s *StateFile) SetManaged(path string, managed map[string][]string) {
 	if s.Files == nil {
 		s.Files = make(map[string]FileState)
 	}
-	fs := s.Files[path]
+	fs, existed := s.Files[path]
+	if !existed {
+		if data, err := os.ReadFile(path); err == nil {
+			fs.Hash = HashContent(data)
+		}
+	}
 	fs.Path = path
 	fs.Managed = managed
 	s.Files[path] = fs

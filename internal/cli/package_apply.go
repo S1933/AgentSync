@@ -68,7 +68,7 @@ func RunPackageDiff(opts PackageDiffOptions) error {
 	if err := printPackageRequirements(output, permissionGrants(pkg.Pivot), required, optional); err != nil {
 		return err
 	}
-	return runDiffAt(filepath.Join(installed.Root, shenronpackage.PivotFileName), opts.Target, opts.Adapters, packageStore(opts.Store).StateDir(installed.Name))
+	return runDiffAt(filepath.Join(installed.Root, shenronpackage.PivotFileName), opts.Target, opts.Adapters, packageStore(opts.Store).StateDir(installed.Name), output, os.Stderr)
 }
 
 // RunPackagePush applies exactly one installed package. Package state and
@@ -105,16 +105,20 @@ func RunPackagePush(opts PackagePushOptions) error {
 		if err := rejectForeignPackageCollisions(pkg.Pivot, generated, state); err != nil {
 			return err
 		}
+		// Record Managed right after the collision check succeeds, and before
+		// any native write, so a crash mid-push never leaves the package
+		// blocked on its own opencode.json entries: runPushAt persists state
+		// (including this Managed record) before touching native files.
+		recordPackageOpenCodeOwnership(pkg.Pivot, generated["opencode"], state)
 		if len(grants) > 0 && !approved {
 			return savePackageApproval(store, installed, digest)
 		}
 		return nil
 	}
 	postflight := func(generated map[string]map[string]string, state *diff.StateFile) error {
-		recordPackageOpenCodeOwnership(pkg.Pivot, generated["opencode"], state)
 		return nil
 	}
-	return runPushAt(filepath.Join(installed.Root, shenronpackage.PivotFileName), opts.Target, opts.Force, opts.Adapters, store.StateDir(installed.Name), preflight, postflight)
+	return runPushAt(filepath.Join(installed.Root, shenronpackage.PivotFileName), opts.Target, opts.Force, opts.Adapters, store.StateDir(installed.Name), preflight, postflight, output, os.Stderr)
 }
 
 // NewDiffCmd builds the top-level `diff` command.
@@ -337,7 +341,7 @@ func rejectForeignOpenCodeCollisions(path string, pf *pivot.PivotFile, state *di
 		return fmt.Errorf("parse OpenCode config %s: %w", path, err)
 	}
 	owned := state.Managed(path)
-	wanted := packageOpenCodeManaged(pf, owned)
+	wanted := packageOpenCodeManaged(pf)
 	for group, ids := range wanted {
 		resources := map[string]json.RawMessage{}
 		if raw, exists := root[group]; exists {
@@ -357,16 +361,13 @@ func rejectForeignOpenCodeCollisions(path string, pf *pivot.PivotFile, state *di
 func recordPackageOpenCodeOwnership(pf *pivot.PivotFile, files map[string]string, state *diff.StateFile) {
 	for path := range files {
 		if filepath.Base(path) == "opencode.json" {
-			state.SetManaged(path, packageOpenCodeManaged(pf, state.Managed(path)))
+			state.SetManaged(path, packageOpenCodeManaged(pf))
 		}
 	}
 }
 
-func packageOpenCodeManaged(pf *pivot.PivotFile, existing map[string][]string) map[string][]string {
-	managed := make(map[string][]string, len(existing)+2)
-	for group, ids := range existing {
-		managed[group] = append([]string(nil), ids...)
-	}
+func packageOpenCodeManaged(pf *pivot.PivotFile) map[string][]string {
+	managed := map[string][]string{}
 	for _, agent := range pf.Agents {
 		managed["agent"] = appendUnique(managed["agent"], agent.ID)
 	}

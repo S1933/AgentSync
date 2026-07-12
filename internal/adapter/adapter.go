@@ -10,3 +10,11 @@ type Adapter interface {
 	TargetPaths() []string
 	MergeFile(path string, existing []byte, fragments map[string]any) ([]byte, error)
 }
+
+// ManagedPruner is an optional capability for adapters that merge into shared
+// files. It removes leaves that shenron previously managed (recorded in
+// state.Managed) but that the current pivot no longer generates. Standalone-
+// file adapters do not implement it.
+type ManagedPruner interface {
+	PruneManaged(path string, existing []byte, managed map[string][]string, fragments map[string]any) ([]byte, error)
+}

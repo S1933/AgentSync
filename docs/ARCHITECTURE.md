@@ -109,16 +109,16 @@ duplicates, missing required values, invalid cross-references, conflicting
 prompt sources, missing prompt files, invalid temperatures, and unsupported
 permission values are rejected before any target generation or write occurs.
 
-The parser currently accepts YAML fields that are unknown to the Go structs,
-because it uses the default `yaml.Unmarshal` behavior rather than strict known-
-field decoding.
+Package loads use `pivot.ParseStrict`, which rejects unknown YAML fields. The
+legacy `pivot.Parse` used by the library escape hatch still accepts unknown
+fields.
 
 ## Synchronization pipeline
 
 `diff <name>` and `push <name>` share the preparation path in
 `internal/cli`. Every command operates on a package snapshot under
-`~/.shenron/packages/<name>/<active-digest>/`, with state under
-`~/.shenron/state/<name>/`:
+`~/.shenron/packages/packages/<name>/<active-digest>/`, with state under
+`~/.shenron/packages/state/<name>/`:
 
 ```mermaid
 sequenceDiagram
@@ -187,9 +187,12 @@ is classified as manually modified. `push` refuses to overwrite it unless
 `--force` is supplied. Files previously tracked but no longer generated are
 classified as orphaned and reported; they are not deleted.
 
-The state file lives beside the pivot as `.shenron-state.json`. It records the
-content hash, path, and owning adapter for each written file. Adapter ownership
-keeps a targeted push from reporting another target's files as orphaned.
+The library `RunDiff`/`RunPush` escape hatch keeps the state file beside the
+pivot as `.shenron-state.json`; the package flow instead stores it under
+`store.StateDir(name)`, outside the immutable snapshot. Either way it records
+the content hash, path, and owning adapter for each written file. Adapter
+ownership keeps a targeted push from reporting another target's files as
+orphaned.
 
 ### Writes
 
