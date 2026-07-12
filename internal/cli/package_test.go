@@ -297,6 +297,53 @@ commands: []
 	}
 }
 
+func TestRunPackagePushSurvivesInterruptBeforeStatePersist(t *testing.T) {
+	source := writeCLIPackage(t, "1.2.3")
+	writeCLIFile(t, filepath.Join(source, shenronpackage.PivotFileName), `version: "1"
+agents:
+  - id: build
+    description: Build the project.
+    mode: subagent
+    systemPrompt: Build carefully.
+commands: []
+`)
+	store := shenronpackage.NewStore(filepath.Join(t.TempDir(), "cache"))
+	if err := cli.RunPackageInstall(cli.PackageInstallOptions{Store: store, Source: source}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	base := filepath.Join(t.TempDir(), "opencode")
+	adapters := map[string]adapter.Adapter{"opencode": opencode.NewAdapterWithBaseDir(base, "")}
+
+	// Make the prompts directory unwritable so the push writes opencode.json
+	// (sorts first) and then fails writing the prompt file, simulating a
+	// crash mid-push: Managed must already be persisted by then, before
+	// postflight or the final SaveState ever run.
+	promptsDir := filepath.Join(base, "prompts")
+	if err := os.MkdirAll(promptsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(promptsDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(promptsDir, 0o755) })
+
+	if err := cli.RunPackagePush(cli.PackagePushOptions{Store: store, Name: "acme-reviewers", Adapters: adapters}); err == nil {
+		t.Fatal("expected first push to fail writing the read-only prompts directory")
+	}
+	if _, err := os.Stat(filepath.Join(base, "opencode.json")); err != nil {
+		t.Fatalf("opencode.json should have been written before the interruption: %v", err)
+	}
+
+	if err := os.Chmod(promptsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-push must NOT raise ErrPackageCollision on its own opencode.json entries.
+	if err := cli.RunPackagePush(cli.PackagePushOptions{Store: store, Name: "acme-reviewers", Adapters: adapters}); err != nil {
+		t.Fatalf("re-push after simulated interrupt should succeed, got: %v", err)
+	}
+}
+
 func writeCLIPackage(t *testing.T, version string) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "package")

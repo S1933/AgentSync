@@ -105,13 +105,17 @@ func RunPackagePush(opts PackagePushOptions) error {
 		if err := rejectForeignPackageCollisions(pkg.Pivot, generated, state); err != nil {
 			return err
 		}
+		// Record Managed right after the collision check succeeds, and before
+		// any native write, so a crash mid-push never leaves the package
+		// blocked on its own opencode.json entries: runPushAt persists state
+		// (including this Managed record) before touching native files.
+		recordPackageOpenCodeOwnership(pkg.Pivot, generated["opencode"], state)
 		if len(grants) > 0 && !approved {
 			return savePackageApproval(store, installed, digest)
 		}
 		return nil
 	}
 	postflight := func(generated map[string]map[string]string, state *diff.StateFile) error {
-		recordPackageOpenCodeOwnership(pkg.Pivot, generated["opencode"], state)
 		return nil
 	}
 	return runPushAt(filepath.Join(installed.Root, shenronpackage.PivotFileName), opts.Target, opts.Force, opts.Adapters, store.StateDir(installed.Name), preflight, postflight, output, os.Stderr)

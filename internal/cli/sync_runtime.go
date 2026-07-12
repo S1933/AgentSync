@@ -159,6 +159,12 @@ func runPushAt(configPath, target string, force bool, adapters map[string]adapte
 		}
 	}
 
+	// Persist state (including Managed) before native writes so a crash mid-push
+	// never leaves the package blocked on its own entries.
+	if err := diff.SaveState(stateDir, state); err != nil {
+		return err
+	}
+
 	scope := buildOrphanScope(adapters)
 	merged := mergeGenerated(generated)
 	results, err := diff.ComputeDiffs(merged, state, scope)
