@@ -35,3 +35,6 @@ Thumbs.db
 vendor/
 .superpowers/
 .worktrees/
+
+# Backup files
+*.bak
