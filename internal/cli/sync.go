@@ -8,6 +8,7 @@ import (
 	"github.com/S1933/Shenron/internal/adapter"
 	"github.com/S1933/Shenron/internal/adapter/claude"
 	"github.com/S1933/Shenron/internal/adapter/opencode"
+	"github.com/S1933/Shenron/internal/diff"
 	"github.com/S1933/Shenron/internal/pivot"
 )
 
@@ -21,8 +22,14 @@ type fragmentAccumulator interface {
 	ConfigPath() string
 }
 
+type managedPruner interface {
+	PruneManaged(path string, existing []byte, managed map[string][]string, fragments map[string]any) ([]byte, error)
+}
+
 // Generate produces the file map for each adapter from a parsed pivot file.
-func Generate(pf *pivot.PivotFile, pivotDir string, adapters map[string]adapter.Adapter) (map[string]map[string]string, error) {
+// state may be nil; when set, adapters that implement managedPruner use it to
+// prune leaves they previously managed but the pivot no longer generates.
+func Generate(pf *pivot.PivotFile, pivotDir string, adapters map[string]adapter.Adapter, state *diff.StateFile) (map[string]map[string]string, error) {
 	out := make(map[string]map[string]string, len(adapters))
 
 	for name, adpt := range adapters {
@@ -66,7 +73,12 @@ func Generate(pf *pivot.PivotFile, pivotDir string, adapters map[string]adapter.
 			} else {
 				existing = data
 			}
-			merged, err := adpt.MergeFile(configPath, existing, acc.Fragments())
+			var merged []byte
+			if pruner, ok := adpt.(managedPruner); ok && state != nil {
+				merged, err = pruner.PruneManaged(configPath, existing, state.Managed(configPath), acc.Fragments())
+			} else {
+				merged, err = adpt.MergeFile(configPath, existing, acc.Fragments())
+			}
 			if err != nil {
 				return nil, fmt.Errorf("%s: merge %s: %w", name, filepath.Base(configPath), err)
 			}
@@ -86,4 +98,5 @@ var (
 	_ pivotDirSetter      = (*claude.Adapter)(nil)
 	_ pivotDirSetter      = (*opencode.Adapter)(nil)
 	_ fragmentAccumulator = (*opencode.Adapter)(nil)
+	_ managedPruner       = (*opencode.Adapter)(nil)
 )

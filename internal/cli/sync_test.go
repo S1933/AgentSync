@@ -29,7 +29,7 @@ func TestGenerateOpenCode(t *testing.T) {
 		"opencode": opencode.NewAdapterWithBaseDir(tmp, dir),
 	}
 
-	out, err := cli.Generate(pf, dir, adapters)
+	out, err := cli.Generate(pf, dir, adapters, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestGenerateConfigReadError(t *testing.T) {
 		"opencode": opencode.NewAdapterWithBaseDir(tmp, dir),
 	}
 
-	_, err = cli.Generate(pf, dir, adapters)
+	_, err = cli.Generate(pf, dir, adapters, nil)
 	if err == nil {
 		t.Fatal("expected error when existing config is unreadable")
 	}

@@ -284,15 +284,15 @@ func prepareSyncAt(configPath, target string, adapters map[string]adapter.Adapte
 		}
 	}
 
-	generated, err = Generate(pf, pivotDir, adapters)
-	if err != nil {
-		return "", nil, nil, nil, err
-	}
-
 	if stateDir == "" {
 		stateDir = pivotDir
 	}
 	state, err = diff.LoadState(stateDir)
+	if err != nil {
+		return "", nil, nil, nil, err
+	}
+
+	generated, err = Generate(pf, pivotDir, adapters, state)
 	if err != nil {
 		return "", nil, nil, nil, err
 	}

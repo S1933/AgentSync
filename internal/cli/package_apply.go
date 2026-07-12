@@ -341,7 +341,7 @@ func rejectForeignOpenCodeCollisions(path string, pf *pivot.PivotFile, state *di
 		return fmt.Errorf("parse OpenCode config %s: %w", path, err)
 	}
 	owned := state.Managed(path)
-	wanted := packageOpenCodeManaged(pf, owned)
+	wanted := packageOpenCodeManaged(pf)
 	for group, ids := range wanted {
 		resources := map[string]json.RawMessage{}
 		if raw, exists := root[group]; exists {
@@ -361,16 +361,13 @@ func rejectForeignOpenCodeCollisions(path string, pf *pivot.PivotFile, state *di
 func recordPackageOpenCodeOwnership(pf *pivot.PivotFile, files map[string]string, state *diff.StateFile) {
 	for path := range files {
 		if filepath.Base(path) == "opencode.json" {
-			state.SetManaged(path, packageOpenCodeManaged(pf, state.Managed(path)))
+			state.SetManaged(path, packageOpenCodeManaged(pf))
 		}
 	}
 }
 
-func packageOpenCodeManaged(pf *pivot.PivotFile, existing map[string][]string) map[string][]string {
-	managed := make(map[string][]string, len(existing)+2)
-	for group, ids := range existing {
-		managed[group] = append([]string(nil), ids...)
-	}
+func packageOpenCodeManaged(pf *pivot.PivotFile) map[string][]string {
+	managed := map[string][]string{}
 	for _, agent := range pf.Agents {
 		managed["agent"] = appendUnique(managed["agent"], agent.ID)
 	}

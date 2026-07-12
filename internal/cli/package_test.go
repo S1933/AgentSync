@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -341,6 +342,67 @@ commands: []
 	// Re-push must NOT raise ErrPackageCollision on its own opencode.json entries.
 	if err := cli.RunPackagePush(cli.PackagePushOptions{Store: store, Name: "acme-reviewers", Adapters: adapters}); err != nil {
 		t.Fatalf("re-push after simulated interrupt should succeed, got: %v", err)
+	}
+}
+
+func TestRunPackagePushPrunesRemovedAgent(t *testing.T) {
+	source := writeCLIPackage(t, "1.2.3")
+	writeCLIFile(t, filepath.Join(source, shenronpackage.PivotFileName), `version: "1"
+agents:
+  - id: build
+    description: Build the project.
+    mode: subagent
+    systemPrompt: Build carefully.
+  - id: review
+    description: Review the project.
+    mode: subagent
+    systemPrompt: Review carefully.
+commands: []
+`)
+	store := shenronpackage.NewStore(filepath.Join(t.TempDir(), "cache"))
+	if err := cli.RunPackageInstall(cli.PackageInstallOptions{Store: store, Source: source}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	base := filepath.Join(t.TempDir(), "opencode")
+	adapters := map[string]adapter.Adapter{"opencode": opencode.NewAdapterWithBaseDir(base, "")}
+	if err := cli.RunPackagePush(cli.PackagePushOptions{Store: store, Name: "acme-reviewers", Adapters: adapters}); err != nil {
+		t.Fatalf("first push: %v", err)
+	}
+
+	writeCLIFile(t, filepath.Join(source, shenronpackage.ManifestFileName), `schemaVersion: "1"
+name: acme-reviewers
+version: 1.2.4
+description: Shared reviewers.
+`)
+	writeCLIFile(t, filepath.Join(source, shenronpackage.PivotFileName), `version: "1"
+agents:
+  - id: build
+    description: Build the project.
+    mode: subagent
+    systemPrompt: Build carefully.
+commands: []
+`)
+	if err := cli.RunPackageUpdate(cli.PackageUpdateOptions{Store: store, Name: "acme-reviewers", Source: source}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if err := cli.RunPackagePush(cli.PackagePushOptions{Store: store, Name: "acme-reviewers", Adapters: adapters}); err != nil {
+		t.Fatalf("second push: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(base, "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		t.Fatal(err)
+	}
+	agents := root["agent"].(map[string]any)
+	if _, ok := agents["review"]; ok {
+		t.Error("agent review should have been pruned from opencode.json")
+	}
+	if _, ok := agents["build"]; !ok {
+		t.Error("agent build should remain")
 	}
 }
 

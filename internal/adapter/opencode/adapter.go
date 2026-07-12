@@ -188,6 +188,66 @@ func (a *Adapter) MergeFile(path string, existing []byte, fragments map[string]a
 	return out.Bytes(), nil
 }
 
+// PruneManaged removes leaves listed in `managed` that shenron previously
+// wrote but that the current `fragments` no longer provides. It then upserts
+// the current fragments (same logic as MergeFile). Native-only leaves are
+// always preserved.
+func (a *Adapter) PruneManaged(path string, existing []byte, managed map[string][]string, fragments map[string]any) ([]byte, error) {
+	if !strings.HasSuffix(filepath.Base(path), configFileName) {
+		return nil, nil
+	}
+	root, err := parseOrderedObject(existing)
+	if err != nil {
+		return nil, fmt.Errorf("parse existing JSON: %w", err)
+	}
+
+	// Build the set of current leaf ids per group from fragments.
+	current := map[string]map[string]struct{}{}
+	for key := range fragments {
+		group, leaf, ok := splitFragmentKey(key)
+		if !ok {
+			continue
+		}
+		if current[group] == nil {
+			current[group] = map[string]struct{}{}
+		}
+		current[group][leaf] = struct{}{}
+	}
+
+	// Prune: remove managed leaves absent from current fragments.
+	for _, group := range fragmentGroups {
+		managedIDs, hasManaged := managed[group]
+		if !hasManaged {
+			continue
+		}
+		containerRaw, hasContainer := root.get(group)
+		if !hasContainer {
+			continue
+		}
+		container, err := parseOrderedObject(containerRaw)
+		if err != nil {
+			return nil, fmt.Errorf("parse existing %q object for prune: %w", group, err)
+		}
+		for _, id := range managedIDs {
+			if _, stillGenerated := current[group][id]; stillGenerated {
+				continue
+			}
+			container.delete(id)
+		}
+		raw, err := container.compact()
+		if err != nil {
+			return nil, fmt.Errorf("serialize %q after prune: %w", group, err)
+		}
+		root.set(group, raw)
+	}
+
+	rootRaw, err := root.compact()
+	if err != nil {
+		return nil, fmt.Errorf("serialize JSON after prune: %w", err)
+	}
+	return a.MergeFile(path, rootRaw, fragments)
+}
+
 func splitFragmentKey(key string) (group, leaf string, ok bool) {
 	for _, group := range fragmentGroups {
 		if strings.HasPrefix(key, group+".") {
