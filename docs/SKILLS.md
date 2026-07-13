@@ -1,8 +1,16 @@
 # Agent skill bindings
 
 `shenron.yaml` is the source of truth for skill metadata. `shenron push <name>`
-emits each binding to both the Claude Code agent frontmatter and the OpenCode
-agent object.
+emits each binding to the **Claude Code** agent frontmatter and adds it to the
+**Codex** agent's instruction prompt.
+
+> **OpenCode output does not contain a `skills` key on generated agents.**
+> OpenCode v1.x does not recognize `skills` as an agent field, so the CLI
+> forwards unknown top-level options to the LLM provider as payload fields.
+> Strict providers (Pydantic `additionalProperties: false`, e.g. GLM-5.2)
+> reject them with HTTP 400 `Extra inputs are not permitted`. Shenron therefore
+> drops the field for OpenCode; OpenCode agents are expected to reference
+> skills from their prompt body (e.g. an `## Available skills` section).
 
 | agent | skills | file |
 |---|---|---|

@@ -42,9 +42,13 @@ func GenerateAgentFragment(agent pivot.AgentDefinition, pivotDir string) (jsonFr
 		fragment["permission"] = perms
 	}
 
-	if len(agent.Skills) > 0 {
-		fragment["skills"] = agent.Skills
-	}
+	// Pivot `agent.Skills` is intentionally NOT emitted to the OpenCode fragment.
+	// OpenCode v1.x does not recognize `skills` as an agent field, so it forwards
+	// unknown top-level options to the LLM provider as payload fields. Strict
+	// providers (e.g. GLM-5.2) reject them with 400 "Extra inputs are not
+	// permitted". Skill bindings remain available to the agent through the
+	// Claude Code and Codex adapters, and through prompt-side `## Available skills`
+	// sections authored in the pivot.
 
 	promptContent, err = resolvePromptContent(agent, pivotDir)
 	if err != nil {

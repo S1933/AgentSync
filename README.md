@@ -19,10 +19,19 @@ native changes, then writes the corresponding Claude Code, Codex, and OpenCode f
 | Agent prompts | Markdown body | `developer_instructions` | `prompts/<id>.md` referenced from JSON |
 | Slash commands | `~/.claude/commands/<id>.md` | `~/.codex/prompts/<id>.md` | `command.<id>` plus `command/<id>.md` |
 | Permissions | `tools` and `permissionMode` | Sandbox, approvals, and web search | Native `permission` object |
-| Per-agent skills | YAML frontmatter `skills` | Instruction hint | Native JSON `skills` array |
+| Per-agent skills | YAML frontmatter `skills` | Instruction hint | Dropped (see `docs/SKILLS.md`) |
 | Bootstrap with `shenron install` | After OpenCode | After Claude Code | Preferred import source |
 
 Shenron targets Claude Code, Codex, and OpenCode.
+
+> **Why no `skills` in OpenCode output?** OpenCode v1.x does not recognize
+> `skills` as an agent field, so the CLI forwards unknown top-level options to
+> the LLM provider as payload fields. Strict providers (Pydantic
+> `additionalProperties: false`, e.g. GLM-5.2) reject them with 400
+> `Extra inputs are not permitted`. Pivot `agents[].skills` is therefore not
+> emitted to OpenCode. Claude Code (native frontmatter) and Codex (instruction
+> hint) keep receiving the bindings, and OpenCode agents are expected to
+> reference skills from their prompt instead.
 
 ## Install
 
@@ -175,14 +184,17 @@ skills:
 | `systemPrompt` / `promptFile` | Mutually exclusive. `promptFile` is relative to the pivot directory and must exist. |
 | `permissions` | Portable grants translated by each adapter. |
 | `extensions` | Target-specific overrides and fields. |
-| `skills` | Optional ordered list of kebab-case skill names, emitted as native agent metadata. Local skill existence is not required. |
+| `skills` | Optional ordered list of kebab-case skill names, emitted to Claude Code frontmatter and Codex instructions only (see below). Local skill existence is not required. |
 
 ### Per-agent skills and global skill references
 
 These two fields have different purposes:
 
-- `agents[].skills` binds skills to an agent. It round-trips through OpenCode's
-  JSON `skills` array and Claude Code's frontmatter `skills` list.
+- `agents[].skills` binds skills to an agent. It is emitted to Claude Code's
+  agent frontmatter and added as a Codex instruction hint. **OpenCode output
+  drops the field** because OpenCode v1.x forwards unknown agent keys to the
+  LLM provider, which strict providers reject (see the table note above and
+  [`docs/SKILLS.md`](docs/SKILLS.md)).
 - Top-level `skills: [{name: ...}]` stores global references only. Shenron
   does not manage skill contents or install skills on another machine.
 

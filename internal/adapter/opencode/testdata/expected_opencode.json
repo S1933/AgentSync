@@ -16,9 +16,6 @@
         "webfetch": "deny"
       },
       "prompt": "{file:./prompts/build.md}",
-      "skills": [
-        "test-driven-development"
-      ],
       "steps": 50,
       "temperature": 0.7
     },

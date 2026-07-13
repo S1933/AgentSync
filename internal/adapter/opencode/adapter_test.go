@@ -82,7 +82,6 @@ func TestGenerateAgent(t *testing.T) {
 		"model":       "anthropic/claude-sonnet-4-5",
 		"temperature": 0.7,
 		"prompt":      "{file:./prompts/build.md}",
-		"skills":      []string{"test-driven-development"},
 		"steps":       50,
 		"permission": map[string]any{
 			"glob":     "allow",
@@ -106,6 +105,11 @@ func TestGenerateAgent(t *testing.T) {
 }
 
 func TestGenerateAgentSkills(t *testing.T) {
+	// OpenCode v1.x does not recognize `skills` as an agent field; the opencode
+	// CLI forwards unknown top-level options to the LLM provider as payload
+	// fields, which strict providers reject. Shenron must therefore drop the
+	// `skills` key entirely from generated OpenCode fragments, even when the
+	// pivot declares agent-level bindings.
 	agent := pivot.AgentDefinition{
 		ID:          "build",
 		Description: "Build agent",
@@ -117,9 +121,8 @@ func TestGenerateAgentSkills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"test-driven-development"}
-	if !reflect.DeepEqual(fragment["skills"], want) {
-		t.Errorf("skills = %#v, want %#v", fragment["skills"], want)
+	if _, ok := fragment["skills"]; ok {
+		t.Errorf("fragment must not contain a `skills` key for OpenCode; got %#v", fragment["skills"])
 	}
 }
 

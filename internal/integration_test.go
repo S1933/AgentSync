@@ -233,8 +233,8 @@ func TestEndToEnd_SkillsRoundTrip(t *testing.T) {
 	}
 	agents := root["agent"].(map[string]any)
 	build := agents["build"].(map[string]any)
-	if got := stringSliceValue(build["skills"]); len(got) != 1 || got[0] != "test-driven-development" {
-		t.Errorf("OpenCode build skills = %#v", got)
+	if _, ok := build["skills"]; ok {
+		t.Errorf("OpenCode build must not carry a `skills` key (forwarded to LLM providers as an unknown payload field); got %#v", build["skills"])
 	}
 	legacy := agents["legacy-helper"].(map[string]any)
 	if got := stringSliceValue(legacy["skills"]); len(got) != 1 || got[0] != "native-existing-skill" {

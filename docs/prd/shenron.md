@@ -65,7 +65,7 @@ Chaque agent dans le pivot a les champs suivants :
 | `promptFile` | string (chemin relatif au répertoire du fichier pivot) | Non | Alternative à `systemPrompt` : référence un fichier Markdown externe contenant le prompt système. Exemple : `prompts/build.md` (relatif au répertoire où se trouve `shenron.yaml`). |
 | `permissions` | objet | Non | Permissions de l'agent (voir section dédiée) |
 | `extensions` | map string→any | Non | Champs spécifiques à un CLI cible (ex. `claudeCode.maxTurns`, `opencode.steps`). Le cœur ignore ces champs ; les adaptateurs les consomment. |
-| `skills` | list[string] (kebab-case) | Non | Skills que cet agent déclare utiliser. Référence des noms de skills dans `~/.agents/skills/`. Les adaptateurs émettent ce champ dans le format natif. |
+| `skills` | list[string] (kebab-case) | Non | Skills que cet agent déclare utiliser. Référence des noms de skills dans `~/.agents/skills/`. Émis par l'adaptateur Claude Code (frontmatter) et par l'adaptateur Codex (hint d'instruction). **Omis par l'adaptateur OpenCode** (voir décision D9). |
 
 **Règle :** `systemPrompt` et `promptFile` ne peuvent pas être spécifiés simultanément.
 
@@ -389,7 +389,7 @@ Les questions ouvertes de conception ont été résolues avant la v1.
 | D6 | Walk-up CWD→root + fallback `$HOME/.shenron/shenron.yaml`. Les deux modes (projet et global) coexistent. | FR1 |
 | D7 | Adaptateur pur + méthode `MergeFile` optionnelle dans l'interface `Adapter`. L'adaptateur OpenCode renvoie les fragments JSON pour les blocs `agent`/`command` ; le cœur fait le merge en préservant les champs hors-scope et l'indentation. | FR10 |
 | D8 | Nom du binaire : `shenron`. Distribution : binaire statique macOS/Linux via GitHub Releases + script `curl\|sh`. Pas de package npm/pip/brew en v1. | Stack |
-| D9 | Le binding skills-par-agent est désormais dans le scope v1 (amend FR2). D5 reste inchangé pour le contenu des skills, qui demeure read-only. Les adaptateurs émettent `skills` comme metadata, pas comme contenu. L'existence locale d'une skill n'est pas bloquante. | FR2, FR7, FR10 |
+| D9 | Le binding skills-par-agent est désormais dans le scope v1 (amend FR2). D5 reste inchangé pour le contenu des skills, qui demeure read-only. Les adaptateurs Claude Code et Codex émettent `skills` comme metadata ; **l'adaptateur OpenCode omet la clé `skills`** parce qu'OpenCode v1.x la forward au provider LLM en tant qu'option top-level inconnue, ce que les providers stricts (schéma Pydantic `additionalProperties: false`, ex. GLM-5.2) rejettent en 400 `Extra inputs are not permitted`. Les agents OpenCode sont censés référencer leurs skills depuis leur prompt (`## Available skills`). L'existence locale d'une skill n'est pas bloquante. | FR2, FR7, FR10 |
 | D10 | Le flux single-pivot de la v1 (`init` / `validate` / `diff` / `push` sur un `shenron.yaml` nu) a été retiré au profit du flux par package. Le contrat CLI actuel vit dans `docs/prd/scope-flatten-commands.md` : cinq commandes top-level (`install`, `list`, `update`, `diff`, `push`), `init` et `validate` supprimés, `--store` promu au niveau racine. FR1-FR4 (schéma pivot) restent valides ; FR5-FR8 sont remplacés par les FR1-FR7 du nouveau PRD. | FR5, FR6, FR7, FR8 |
 
 ## Acceptance criteria (v1)
@@ -413,7 +413,7 @@ Une session de test valide le scénario suivant :
 8. `shenron push --target opencode` → refuse d'écraser (sauf `--force`).
 9. `shenron push --target claude-code` → écrit `~/.claude/agents/build.md` à partir du même pivot, avec le frontmatter YAML Claude Code.
 10. Les permissions mappées (`edit: ask`, `bash` avec patterns) apparaissent correctement dans les deux fichiers natifs.
-11. `shenron push` round-trip un champ `skills: [foo]` modifié : il est visible dans `opencode.json` et `~/.claude/agents/<id>.md` après le push.
+11. `shenron push` round-trip un champ `skills: [foo]` modifié : il est visible dans `~/.claude/agents/<id>.md` (frontmatter) et comme instruction Codex, mais **absent de `opencode.json`** (voir décision D9).
 12. `shenron push --target codex` génère les agents TOML et prompts Markdown, puis `shenron diff --target codex` retourne "No changes".
 
 ## Stack
