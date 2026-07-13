@@ -371,6 +371,55 @@ func TestEndToEnd_PushAllTargetsIdempotent(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_JSONOutput(t *testing.T) {
+	env := newIntegrationEnv(t)
+
+	pushOpts := env.pushOpts("")
+	pushOpts.Format = "json"
+	out, _, err := cli.CaptureOutput(func() error { return cli.RunPush(pushOpts) })
+	if err != nil {
+		t.Fatalf("push json: %v", err)
+	}
+	var pushReport cli.PushReport
+	if err := json.Unmarshal([]byte(out), &pushReport); err != nil {
+		t.Fatalf("push output is not valid JSON: %v\n%s", err, out)
+	}
+	if !pushReport.Wrote || len(pushReport.Written) == 0 {
+		t.Fatalf("expected written files, got %+v", pushReport)
+	}
+	for _, f := range pushReport.Written {
+		if f.Adapter == "" || f.Path == "" || f.Status == "" {
+			t.Errorf("incomplete file report: %+v", f)
+		}
+	}
+
+	diffOpts := env.diffOpts("")
+	diffOpts.Format = "json"
+	out, _, err = cli.CaptureOutput(func() error { return cli.RunDiff(diffOpts) })
+	if err != nil {
+		t.Fatalf("diff json: %v", err)
+	}
+	var diffReport cli.DiffReport
+	if err := json.Unmarshal([]byte(out), &diffReport); err != nil {
+		t.Fatalf("diff output is not valid JSON: %v\n%s", err, out)
+	}
+	if diffReport.HasChanges {
+		t.Errorf("expected no changes after push, got %+v", diffReport)
+	}
+	if len(diffReport.Files) == 0 {
+		t.Error("expected files in diff report")
+	}
+}
+
+func TestEndToEnd_JSONInvalidFormat(t *testing.T) {
+	env := newIntegrationEnv(t)
+	opts := env.diffOpts("")
+	opts.Format = "yaml"
+	if err := cli.RunDiff(opts); err == nil {
+		t.Fatal("expected error for unknown output format")
+	}
+}
+
 func TestEndToEnd_PermissionMapping(t *testing.T) {
 	env := newIntegrationEnv(t)
 

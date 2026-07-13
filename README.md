@@ -103,6 +103,9 @@ Common flags:
 - `push --allow-permissions` approves the package revision's declared
   permission grants; the approval is bound to the installed revision and its
   permission digest.
+- `diff --output json` and `push --output json` emit a machine-readable
+  report on stdout (files with their adapter, status, and resource id, plus
+  any orphaned paths); human diagnostics stay on stderr.
 
 ## Pivot file
 

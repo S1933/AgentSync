@@ -29,11 +29,16 @@ type DiffOptions struct {
 	ConfigPath string
 	Target     string
 	Adapters   map[string]adapter.Adapter
+	Format     string // "text" (default) or "json"
 }
 
 // RunDiff shows differences between pivot and native configs.
 func RunDiff(opts DiffOptions) error {
-	return runDiffAt(opts.ConfigPath, opts.Target, opts.Adapters, "", os.Stdout, os.Stderr)
+	format, err := parseOutputFormat(opts.Format)
+	if err != nil {
+		return err
+	}
+	return runDiffAt(opts.ConfigPath, opts.Target, opts.Adapters, "", format, os.Stdout, os.Stderr)
 }
 
 // CaptureOutput runs fn while capturing stdout and stderr separately.
@@ -68,11 +73,16 @@ type PushOptions struct {
 	Target     string
 	Force      bool
 	Adapters   map[string]adapter.Adapter
+	Format     string // "text" (default) or "json"
 }
 
 // RunPush pushes pivot config to native CLI configs.
 func RunPush(opts PushOptions) error {
-	return runPushAt(opts.ConfigPath, opts.Target, opts.Force, opts.Adapters, "", nil, nil, os.Stdout, os.Stderr)
+	format, err := parseOutputFormat(opts.Format)
+	if err != nil {
+		return err
+	}
+	return runPushAt(opts.ConfigPath, opts.Target, opts.Force, opts.Adapters, "", format, nil, nil, os.Stdout, os.Stderr)
 }
 
 type pushPreflight func(generated map[string][]adapter.GeneratedFile, state *diff.StateFile, adapters map[string]adapter.Adapter) error
@@ -82,7 +92,7 @@ type pushPostflight func(generated map[string][]adapter.GeneratedFile, state *di
 // public Go API and the package flow. They accept an explicit stateDir so the
 // package flow can keep its state under ~/.shenron/packages/state/<name>/.
 
-func runDiffAt(configPath, target string, adapters map[string]adapter.Adapter, stateDir string, stdout, stderr io.Writer) error {
+func runDiffAt(configPath, target string, adapters map[string]adapter.Adapter, stateDir string, format outputFormat, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -96,6 +106,15 @@ func runDiffAt(configPath, target string, adapters map[string]adapter.Adapter, s
 	}
 
 	scope := buildOrphanScope(resolved)
+
+	if format == formatJSON {
+		report, err := buildDiffReport(generated, state, scope)
+		if err != nil {
+			return err
+		}
+		return writeJSON(stdout, report)
+	}
+
 	colored := diff.SupportsColor()
 	hasChanges := false
 
@@ -138,7 +157,7 @@ func runDiffAt(configPath, target string, adapters map[string]adapter.Adapter, s
 	return nil
 }
 
-func runPushAt(configPath, target string, force bool, adapters map[string]adapter.Adapter, stateDir string, preflight pushPreflight, postflight pushPostflight, stdout, stderr io.Writer) error {
+func runPushAt(configPath, target string, force bool, adapters map[string]adapter.Adapter, stateDir string, format outputFormat, preflight pushPreflight, postflight pushPostflight, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -198,7 +217,10 @@ func runPushAt(configPath, target string, force bool, adapters map[string]adapte
 		return fmt.Errorf("%w: %s", ErrManualEdits, strings.TrimSpace(b.String()))
 	}
 
-	printOrphanWarnings(stderr, diff.OrphanedOnly(results))
+	orphans := diff.OrphanedOnly(results)
+	if format != formatJSON {
+		printOrphanWarnings(stderr, orphans)
+	}
 
 	// Stage every changed file, then commit the batch through a journalled
 	// transaction so a crash mid-write can be completed on the next push.
@@ -233,9 +255,6 @@ func runPushAt(configPath, target string, force bool, adapters map[string]adapte
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit push: %w", err)
 	}
-	for _, l := range logs {
-		fmt.Fprintf(stdout, "[%s] wrote %s (%s)\n", l.name, l.path, diffStatusName(l.status))
-	}
 	wroteAny := len(logs) > 0
 	if postflight != nil {
 		if err := postflight(generated, state); err != nil {
@@ -247,6 +266,13 @@ func runPushAt(configPath, target string, force bool, adapters map[string]adapte
 		return err
 	}
 
+	if format == formatJSON {
+		return writeJSON(stdout, buildPushReport(logs, orphans, generated))
+	}
+
+	for _, l := range logs {
+		fmt.Fprintf(stdout, "[%s] wrote %s (%s)\n", l.name, l.path, diffStatusName(l.status))
+	}
 	if !wroteAny {
 		fmt.Fprintln(stdout, "No changes")
 	} else {
