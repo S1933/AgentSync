@@ -334,9 +334,12 @@ Shenron upserts pivot agents and commands into the nested `agent` and
 preserved, and existing key order is retained where possible. The JSON document
 is parsed and serialized again, so byte-for-byte formatting is not guaranteed.
 
-The merge is deliberately upsert-only. Removing an agent or command from the
-pivot does not delete its nested OpenCode entry; remove stale JSON entries by
-hand. Standalone managed files that are no longer generated can be reported as
+For `shenron push`, the merge is upsert-only on nested entries: removing an
+agent or command from the pivot does not delete its nested OpenCode entry, so
+remove stale JSON entries by hand. (The package apply flow goes further — it
+tracks the entries it owns in `.shenron-state.json` and prunes owned entries
+that leave the pivot, while preserving native-only entries you added by hand.)
+Standalone managed files that are no longer generated can be reported as
 orphaned, but Shenron still leaves deletion to you.
 
 ### Manual-edit protection

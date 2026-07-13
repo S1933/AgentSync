@@ -347,6 +347,30 @@ func TestEndToEnd_PushBothTargets(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_PushAllTargetsIdempotent(t *testing.T) {
+	env := newIntegrationEnv(t)
+
+	if err := cli.RunPush(env.pushOpts("")); err != nil {
+		t.Fatalf("push all targets: %v", err)
+	}
+
+	out, errOut, err := cli.CaptureOutput(func() error {
+		return cli.RunDiff(env.diffOpts(""))
+	})
+	if err != nil {
+		t.Fatalf("diff after push: %v", err)
+	}
+	for _, name := range []string{"opencode", "claude-code", "codex"} {
+		want := "[" + name + "] No changes"
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q after push, got stdout:\n%s", want, out)
+		}
+	}
+	if strings.Contains(errOut, "warning: orphaned") {
+		t.Errorf("unexpected orphan warning after full push:\n%s", errOut)
+	}
+}
+
 func TestEndToEnd_PermissionMapping(t *testing.T) {
 	env := newIntegrationEnv(t)
 
