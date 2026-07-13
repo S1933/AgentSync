@@ -90,6 +90,7 @@ reports `No changes` for each synchronized target.
 | `shenron diff <name>` | Show a package's native diff plus its permission grants and missing skills. |
 | `shenron push <name>` | Generate and atomically write a package's native files, then update its state. |
 | `shenron doctor` | Check tool paths, snapshot-cache integrity, sync state, and pending permission approvals. |
+| `shenron explain <name> --target <tool>` | Preview the native files a package translates into for one target, without writing. |
 
 Common flags:
 

@@ -11,11 +11,11 @@ import (
 )
 
 // TestRootSubcommandNames asserts the root command advertises exactly the
-// six top-level subcommands and no "package" parent.
+// seven top-level subcommands and no "package" parent.
 func TestRootSubcommandNames(t *testing.T) {
 	root := cli.NewRootCmd()
 
-	want := []string{"diff", "doctor", "install", "list", "push", "update"}
+	want := []string{"diff", "doctor", "explain", "install", "list", "push", "update"}
 	var got []string
 	for _, c := range root.Commands() {
 		got = append(got, c.Name())

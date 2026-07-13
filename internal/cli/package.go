@@ -122,7 +122,25 @@ func NewRootCmd() *cobra.Command {
 		NewDiffCmd(resolver),
 		NewPushCmd(resolver),
 		NewDoctorCmd(resolver),
+		NewExplainCmd(resolver),
 	)
+	return cmd
+}
+
+// NewExplainCmd builds the top-level `explain` command.
+func NewExplainCmd(store func() *shenronpackage.Store) *cobra.Command {
+	var target, output string
+	cmd := &cobra.Command{
+		Use:          "explain <name>",
+		Short:        "Preview the native files a package translates into for a target",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return RunExplain(ExplainOptions{Store: store(), Name: args[0], Target: target, Format: output, Output: cmd.OutOrStdout()})
+		},
+	}
+	cmd.Flags().StringVar(&target, "target", "", "CLI target to explain: claude-code, codex, or opencode (required)")
+	cmd.Flags().StringVar(&output, "output", "text", "output format: text or json")
 	return cmd
 }
 
